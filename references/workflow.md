@@ -8,6 +8,11 @@
 - Checkpoints: `GET https://taiji.algo.qq.com/taskmanagement/api/v1/instances/external/<instanceId>/get_ckpt`
 - Metrics: `GET https://taiji.algo.qq.com/taskmanagement/api/v1/instances/external/<instanceId>/tf_events`
 - Logs: `GET https://taiji.algo.qq.com/taskmanagement/api/v1/instances/<instanceId>/pod_log`
+- Model list: `GET https://taiji.algo.qq.com/aide/api/external/mould/?page=<n>&page_size=<n>&search=<text>`
+- Evaluation template files: `GET https://taiji.algo.qq.com/aide/api/evaluation_tasks/get_template/`
+- Evaluation create/list/stop: `POST/GET https://taiji.algo.qq.com/aide/api/evaluation_tasks/`
+- Evaluation event log: `GET https://taiji.algo.qq.com/aide/api/evaluation_tasks/event_log/?task_id=<evalTaskId>`
+- Federation token for COS file upload/download: `GET https://taiji.algo.qq.com/aide/api/evaluation_tasks/get_federation_token/`
 
 The instance list endpoint requires a JSON body:
 
@@ -48,7 +53,13 @@ The bundled scraper exports:
 - `code/<jobId>/files/...`: downloaded training code files when `trainFiles[].path` is directly fetchable. Preserve path structure when possible.
 - `browser-profile/`: Playwright persistent profile.
 - `config-diffs/`: output for config diff files when `--out` is a relative path.
+- `ledger/experiments.json`: structured experiment ledger from `ledger sync`.
 - `submit-bundle/` and `submit-live/`: local submit preparation and live submit/run records.
+- `evaluations/eval-summary.csv`: one row per evaluation task with status, score/AUC, file counts, and log counts.
+- `evaluations/eval-tasks.json`: normalized evaluation task evidence.
+- `evaluations/logs/<evalTaskId>.json` and `.txt`: evaluation event logs.
+- `evaluations/code/<evalTaskId>/files/...`: downloaded inference files referenced by evaluation tasks.
+- `reports/`: JSON or Markdown reports from compare, diagnose, model, eval, and related helper commands.
 - `secrets/`: recommended local location for cookies or captured headers.
 
 Use `jobId + instanceId + metric + series + step` as the stable row identity for metric analysis.
@@ -73,3 +84,16 @@ The tool parses YAML and reports semantic changes by path. It handles nested map
 - Empty instances with successful jobs: POST body was likely sent as query params. Use JSON body.
 - Metrics count is nonzero but CSV rows are zero: metrics payload may be an array of chart objects; flatten every chart.
 - Missing code files: first check `code/<jobId>/job-detail.json` and `train-files.json`. If `trainFiles` exists but download failed, the path may require COS SDK/temporary credentials rather than a plain HTTP GET.
+- Some failed or interrupted instances legitimately have zero metrics.
+- Evaluation task IDs are listed by `/evaluation`; `eval scrape --task-id` may page through the list to find older IDs, but it only downloads logs/code for matched tasks.
+
+## Implementation Notes
+
+- Job list endpoint is GET.
+- Instance list endpoint is POST with JSON body, not query params.
+- Metrics endpoint may return each metric as an array of chart objects; flatten all charts.
+- Job list rows do not include training code files. Fetch Job detail and read all of `data.trainFiles`, not only `config.yaml`.
+- Training and inference code files usually store COS keys in `trainFiles[].path` or `files[].path`; use the federation token and COS `getObject` before falling back to direct URL fetch.
+- Validate downloaded trainFiles before saving: reject Taiji frontend HTML, size mismatches, bad zip magic for `.zip`, non-mapping `config.yaml`, and invalid JSON. Always save metadata even when some file content downloads fail.
+- `--direct` bypasses Chromium and uses Node `fetch` with the Cookie header. It helps on headless servers, but it cannot fix an expired, IP-bound, or fingerprint-bound login token.
+- Output CSV can be large. Prefer streaming, `rg`, `head`, `jq`, or long-form CSV projections for downstream analysis instead of loading or pasting whole files.

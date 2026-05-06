@@ -1,262 +1,125 @@
 ---
 name: taac2026-cli
-description: Use TAAC2026 CLI to scrape Tencent TAAC / Taiji training pages for Job IDs, Job Names, Job Descriptions, code files, instances, checkpoints, logs, and metrics; compare YAML configs such as config.yaml across versions; prepare TAAC experiment submissions; and optionally upload/start Taiji jobs through the captured API flow. Use when a human or agent asks to crawl taiji.algo.qq.com/training, TAAC training jobs, Tencent Angel Machine Learning Platform outputs, ckpt pages, pod logs, config.yaml or arbitrary job code files, compare two config.yaml files, tf_events metrics, or wants a reusable CLI workflow for TAAC metrics, logs, code files, config diffs, or code/config submission to Taiji.
+description: Use TAAC2026 CLI to scrape Tencent TAAC / Taiji training and evaluation pages for Job IDs, Job Names, descriptions, metrics, checkpoints, logs, code files, published models, evaluation tasks, online scores, and inference code; compare config.yaml files; prepare and verify submissions; publish checkpoints as models; create, scrape, or stop evaluations; and optionally upload/start Taiji jobs through captured API flows. Use when a human or agent asks to crawl taiji.algo.qq.com/training, /model, or /evaluation; inspect TAAC metrics/logs/code/checkpoints/configs; compare experiment runs; diagnose failures; publish a model; submit training; or collect online evaluation evidence.
 ---
 
 # TAAC2026 CLI Agent Runbook
 
-## Workflow
+## Setup
 
-1. Confirm the target is `https://taiji.algo.qq.com/training` or a `/training/ckpt/.../<instanceId>` page.
-2. Run the CLI from the user's workspace root so `taiji-output/` is written there. If `npm link` was run, use `taac2026`; otherwise replace `<TOOL_DIR>` with this tool directory and use `node <TOOL_DIR>/bin/taac2026.mjs`.
-3. If creating a standalone workspace instead, clone `https://github.com/ZhongKuang/TAAC2026-CLI.git` or copy the relevant scripts and create a minimal `package.json` using `references/package-json.md`.
-4. Install dependencies with `npm install` and, if needed, `npx playwright install chromium`.
-5. Add `taiji-output/` to `.gitignore`. Scripts default all local outputs, browser profile, submit bundles, and live submit records under this directory.
-6. Capture a browser Cookie from the user if Playwright login triggers verification or rate limiting.
-7. Run the scraper and verify output row counts.
+Run commands from the user's workspace root so outputs land under `taiji-output/`. If `taac2026` is linked, use it; otherwise run `node <TOOL_DIR>/bin/taac2026.mjs`.
 
-## Commands
-
-Recommended scrape strategy:
-
-1. Fresh workspace or missing `taiji-output/jobs.json`: run one full `scrape --all` to seed the local cache.
-2. Existing cache and no narrow target: prefer `scrape --all --incremental`; it still refreshes the Job list, but skips deep fetching unchanged cached terminal Jobs.
-3. User gives explicit Job IDs, experiment names, or a small set such as "1.4.8, 1.4.9, +1/+2/+3": prefer targeted scrape first with `--job-internal-id <id>` for each known Job. If the IDs are unknown, use `jobs-summary.csv` or `taac2026 compare jobs` / shell filtering to identify candidates before scraping the historical task sea.
-4. During targeted scrape, the platform may not print continuous progress while fetching instances, logs, metrics, checkpoints, or code files. Wait for the command to finish instead of starting a full historical scrape in parallel.
-5. After targeted scrape, summarize only the requested Jobs unless the user explicitly asks for a broader historical comparison.
-
-For all training jobs:
+Install dependencies only when needed:
 
 ```bash
-taac2026 scrape --all --cookie-file taiji-output/secrets/taiji-cookie.txt --headless
+npm install
+npx playwright install chromium
 ```
 
-Incremental sync still scans the full Job list, but skips deep fetching for cached terminal Jobs whose `updateTime`, `status`, and `jzStatus` are unchanged:
+Store cookies or copied request headers under `taiji-output/secrets/`. Never print or commit cookies.
+
+## Decision Matrix
+
+| User intent | Prefer this command |
+| --- | --- |
+| Inspect one or a few training Jobs | `taac2026 scrape --all --job-internal-id <id> --cookie-file taiji-output/secrets/taiji-cookie.txt --direct` |
+| Refresh an existing training cache | `taac2026 scrape --all --incremental --cookie-file taiji-output/secrets/taiji-cookie.txt --direct` |
+| Archive all training history | `taac2026 scrape --all --cookie-file taiji-output/secrets/taiji-cookie.txt --direct` only when explicitly requested |
+| Compare two training Jobs | `taac2026 compare-runs --base <id> --exp <id> --config --metrics --json --out compare-runs.json` |
+| Compare config files | `taac2026 diff-config old.yaml new.yaml --json --out diff.json` |
+| Diagnose a failed Job | `taac2026 logs --job <id> --errors --tail 100 --json --out logs-<id>.json` or `taac2026 diagnose job --job-internal-id <id> --json --out diagnose-<id>.json` |
+| Check submit package before upload | `taac2026 submit doctor --bundle taiji-output/submit-bundle` |
+| Verify platform received the intended files | scrape the submitted Job, then `taac2026 submit verify --bundle taiji-output/submit-bundle --job-internal-id <id>` |
+| Select a checkpoint by rule | `taac2026 ckpt-select --job <id> --by valid_auc --json --out ckpt-select.json` |
+| Publish a checkpoint as model | first dry-run `taac2026 ckpt-publish --job <id> --ckpt "<name>" --json --out ckpt-publish.json` |
+| Find a model | `taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "<name>" --out model-list.json` |
+| Create an evaluation | first dry-run `taac2026 eval create --model-name "<name>" --submit-name <local-submit> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json` |
+| Analyze evaluation-page results | first `taac2026 eval list --cookie-file taiji-output/secrets/taiji-cookie.txt --page-size 20 --out eval-list.json`, then `taac2026 eval scrape --task-id <id> --logs --code --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json` |
+| Stop an evaluation | first dry-run `taac2026 eval stop --task-id <id> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-stop.json` |
+
+`evaluation` is an alias for `eval`; use `eval` in docs and replies.
+
+## Cost Policy
+
+Default order is targeted > incremental > full.
+
+- Do not start with historical full scrape unless the user asks for full archive/history.
+- Fresh workspaces can still use targeted `--job-internal-id`, `--url`, or `eval scrape --task-id`; a full seed is not mandatory.
+- `eval scrape --task-id` limits logs/code downloads to matching tasks, but old IDs may still require paging through evaluation list. If the ID is unknown, run `eval list --page-size 20 --out ...` first.
+- `eval scrape --all --logs --code` is high cost. Use only for explicit evaluation-history archive.
+- If Chromium is unreliable on a server, prefer `--direct` with a valid cookie.
+
+## Output Discipline
+
+- For machine-readable reports, prefer `--json --out <name>.json` or plain `--out <name>.json`; avoid printing large JSON to stdout.
+- Relative `--out` report names are written under `taiji-output/reports/` or the command-specific output folder. `eval scrape --out-dir` is different: it is an explicit directory path; use `--out-dir taiji-output/evaluations-<name>` when you want a custom folder under `taiji-output/`.
+- Reply with summaries: `syncStats`, Job IDs, Eval task IDs, key metrics, error snippets, and file paths.
+- Do not paste whole `jobs.json`, `eval-tasks.json`, full logs, or downloaded code into chat. Use `rg`, `head`, `jq`, CSV projections, or `logs --errors --tail 100`.
+
+## Mutation Safety Gate
+
+Platform writes include:
+
+- `submit --execute`
+- `submit --execute --run`
+- `ckpt-publish --execute`
+- `eval create --execute`
+- `eval stop --execute`
+
+Always dry-run first and show the user a concise plan: target Job/model/eval ID, files, name/description, and whether it will run or stop anything. Live execution requires explicit confirmation in the current conversation.
+
+Extra-risk flags require explicit mention: `--run`, `--force`, `--allow-add-file`, `--include-all-files`. Do not run live just because a manifest records run intent.
+
+## Core Commands
+
+Training scrape:
 
 ```bash
+taac2026 scrape --all --job-internal-id <JOB_INTERNAL_ID> --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
 taac2026 scrape --all --incremental --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
 ```
 
-For targeted debugging of one platform Job:
-
-```bash
-taac2026 scrape --all --job-internal-id 56242 --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
-```
-
-For servers where Chromium page fetch fails, use backend direct HTTP mode:
-
-```bash
-taac2026 scrape --all --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
-```
-
-For a single ckpt page:
-
-```bash
-taac2026 scrape --url "<TAAC_CKPT_URL>" --cookie-file taiji-output/secrets/taiji-cookie.txt --headless
-```
-
-Compare two YAML config files:
-
-```bash
-taac2026 diff-config old-config.yaml new-config.yaml
-taac2026 diff-config old-config.yaml new-config.yaml --json --out diff.json
-```
-
-Daily experiment evidence tools:
+Evidence tools:
 
 ```bash
 taac2026 submit doctor --bundle taiji-output/submit-bundle
 taac2026 submit verify --bundle taiji-output/submit-bundle --job-internal-id <JOB_INTERNAL_ID>
-taac2026 compare jobs <JOB_INTERNAL_ID...> --json
-taac2026 compare-runs --base <BASE_JOB_INTERNAL_ID> --exp <EXP_JOB_INTERNAL_ID> --config --metrics --json
-taac2026 config diff-ref --config config.yaml --job-internal-id <JOB_INTERNAL_ID> --json
+taac2026 compare jobs <JOB_INTERNAL_ID...> --json --out compare-jobs.json
+taac2026 compare-runs --base <BASE_JOB_INTERNAL_ID> --exp <EXP_JOB_INTERNAL_ID> --config --metrics --json --out compare-runs.json
+taac2026 config diff-ref --config config.yaml --job-internal-id <JOB_INTERNAL_ID> --json --out config-diff-ref.json
 taac2026 ledger sync
-taac2026 logs --job <JOB_INTERNAL_ID> --errors --tail 100 --json
-taac2026 diagnose job --job-internal-id <JOB_INTERNAL_ID> --json
-taac2026 ckpt-select --job <JOB_INTERNAL_ID> --by valid_auc --json
-taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json
-taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "<MODEL_NAME>" --json
-taac2026 eval create --model-id <MODEL_ID> --creator <AMS_CREATOR> --submit-name <LOCAL_SUBMIT_NAME> --json
-taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --json
-taac2026 eval stop --task-id <EVAL_TASK_ID> --json
+taac2026 logs --job <JOB_INTERNAL_ID> --errors --tail 100 --json --out logs.json
+taac2026 diagnose job --job-internal-id <JOB_INTERNAL_ID> --json --out diagnose.json
 ```
 
-Use these commands to collect evidence and catch mistakes; do not present them as automatic experiment decision makers.
-
-Prepare a local-agent experiment submission package:
+Checkpoint/model/evaluation:
 
 ```bash
-taac2026 prepare-submit --template-job-url "<TEMPLATE_JOB_URL>" --zip "./artifacts/exp.zip" --config "./configs/exp.yaml" --name "exp_017" --description "try focal loss"
+taac2026 ckpt-select --job <JOB_INTERNAL_ID> --by valid_auc --json --out ckpt-select.json
+taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json --out ckpt-publish.json
+taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "<MODEL_NAME>" --out model-list.json
+taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json
+taac2026 eval scrape --task-id <EVAL_TASK_ID> --logs --code --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json
+taac2026 eval stop --task-id <EVAL_TASK_ID> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-stop.json
 ```
 
-Submit file priority:
-
-1. Prefer primary files: `--zip <code.zip>`, `--config <config.yaml>`, and optional `--run-sh <run.sh>`.
-2. Use `--file-dir <dir>` for a directory of direct trainFiles. It auto-detects `code.zip`, `config.yaml`, and `run.sh`; every other direct file becomes generic. Subdirectories are ignored.
-3. Use repeatable `--file <path[=name]>` only for single-file generic replacements or local-to-template name mapping.
-
-The names `code.zip`, `config.yaml`, and `run.sh` are reserved primary names and cannot be supplied through `--file`.
-`prepare --run` only records run intent in the manifest; it does not start training by itself.
-
-Dry-run live submit plan:
+Live examples only after confirmation:
 
 ```bash
-taac2026 submit --bundle taiji-output/submit-bundle --cookie-file taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID>
+taac2026 submit --bundle taiji-output/submit-bundle --cookie-file taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_ID> --execute --yes
+taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json --out ckpt-publish-live.json
+taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-create-live.json
 ```
 
-Live upload/create only. Do not add `--run` unless the user explicitly asks to start training:
+## Notes
 
-```bash
-taac2026 submit --bundle taiji-output/submit-bundle --cookie-file taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID> --execute --yes
-```
+- `ckpt-publish` can use `--ckpt "<name>"` or `--by valid_auc`; pass `--instance-id <id>` if the selection is ambiguous across instances.
+- `eval create --submit-name` resolves `submits/<date>/<name>/inference_code`; exact matches win, fuzzy matches must be unique.
+- `--file-dir <dir>` for eval create is a manual fallback. It uploads only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` unless `--include-all-files` is explicitly confirmed.
+- `eval scrape` writes `taiji-output/evaluations/eval-summary.csv`, `eval-tasks.json`, `logs/<evalTaskId>.txt`, and `code/<evalTaskId>/files/...`.
 
-Live upload/create/run, only after explicit user confirmation:
+## References
 
-```bash
-taac2026 submit --bundle taiji-output/submit-bundle --cookie-file taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID> --execute --yes --run
-```
-
-If the template Job does not already contain `code.zip`, `config.yaml`, requested `run.sh`, or requested generic `--file` / `--file-dir` names, `submit-taiji.mjs` fails by default. Use `--allow-add-file` only when intentionally adding new `trainFiles`.
-
-Use longer auth waiting only when interactive login is required:
-
-```bash
-taac2026 scrape --all --auth-timeout 600000
-```
-
-## Cookie Handling
-
-Treat cookies as secrets. Do not print them back, commit them, or include them in final answers.
-
-If the user sees "operation too frequent" or a verification loop, do not keep retrying interactive login. Ask them to copy the Cookie header or `Copy as cURL` from the successful normal browser request. Follow `references/workflow.md` for the exact DevTools flow.
-
-If both Playwright mode and `--direct` return `401`, treat the cookie as invalid for that machine or request context. Ask for a fresh complete `Copy as cURL` from the browser that can access the page, then test that cURL on the target machine before changing scraper logic.
-
-## Output Contract
-
-The scraper writes to `taiji-output/` by default:
-
-- `jobs.json`: complete raw and normalized data, keyed by `jobsById[jobId].instancesById[instanceId]`, with log file metadata.
-- `jobs-summary.csv`: one row per Job ID; reruns update Job Name and Job Description.
-- `all-checkpoints.csv`: checkpoint rows with `jobId` and `instanceId`.
-- `all-metrics-long.csv`: long-form metric rows with `jobId`, `instanceId`, `metric`, `chart`, `series`, `step`, `value`.
-- `logs/<jobId>/<instanceId>.json` and `.txt`: pod logs for every instance.
-- `code/<jobId>/job-detail.json`: full Job detail response, including `trainFiles` when available.
-- `code/<jobId>/train-files.json`: train file metadata plus download status.
-- `code/<jobId>/files/...`: best-effort downloaded training code files, preserving path structure when possible.
-- `browser-profile/`: Playwright persistent browser state for interactive auth fallback.
-- `config-diffs/`: config diff files when `compare-config-yaml.mjs --out <file>` is used with a relative path.
-- `ledger/experiments.json`: structured experiment ledger from `ledger sync`.
-- `submit-bundle/`: default prepared local submission bundle.
-- `submit-live/<timestamp>/`: dry-run plans and live submit/run results.
-- `secrets/`: recommended local location for `taiji-cookie.txt` or captured headers. Never commit this directory.
-
-## Config Diff Tool
-
-Use `scripts/compare-config-yaml.mjs` to compare two YAML files semantically instead of line-by-line. It parses YAML, flattens nested maps/lists into stable paths, and reports `added`, `removed`, and `changed` entries.
-
-When `--out` is a relative path, the diff is written under `taiji-output/`; a bare filename such as `diff.json` becomes `taiji-output/config-diffs/diff.json`.
-
-Use path identity like `model.lr`, `train.batch_size`, and `layers[1]` when explaining changes. Prefer `--json` when downstream scripts need machine-readable output.
-
-Use `jobId + instanceId` to distinguish multiple runs under one Job ID. Use `jobId + instanceId + metric + series + step` for metric row identity.
-
-## Submit Training Workflow
-
-Use `scripts/prepare-taiji-submit.mjs` when a local agent needs to package the intended Taiji submission. It validates prepared trainFiles, records the Git commit/status when available, writes a manifest, and captures whether the agent should run after submission.
-
-Use `scripts/submit-taiji.mjs` for the captured Taiji API path. It is dry-run by default. Live execution requires `--execute --yes`, and starting training additionally requires `--run`.
-
-For a minimal `code.zip + run.sh + config.yaml` package shape, load `examples/minimal-taiji-submit/README.md`. The submit script replaces `code.zip` and `config.yaml` by default; pass `--run-sh` to prepare an explicit `run.sh` overwrite. For legacy templates with loose files such as `main.py` and `dataset.py`, prefer `--file-dir` for a whole directory, or pass repeatable `--file` entries so the manifest records those replacements explicitly.
-
-The intended live workflow is:
-
-1. Commit or record the local code state.
-2. Reuse a known-good template Job instead of creating a blank Job.
-3. Copy the template Job.
-4. Replace the code zip and config file; replace `run.sh` only when `--run-sh` or `--file-dir` prepared it; replace generic files only when `--file-dir` or `--file` prepared them. The template must already contain matching trainFiles unless `--allow-add-file` is used.
-5. Fill Job Name and Job Description.
-6. Submit the new Job.
-7. Optionally click Run and return the new Job ID, Job URL, and instance result.
-
-Live submit uses the captured "Copy Job -> upload trainFiles to COS -> submit -> run" flow. Load `references/submit-workflow.md` before debugging live submission.
-
-## Experiment Evidence Workflow
-
-Use `submit doctor` before live submit to check bundle file hashes, zip/config/run.sh validity, dirty Git state, and obvious name/description/config mismatches.
-
-Use `submit verify` after scraping the submitted Job to compare platform-side trainFiles and log `Resolved config` against the local bundle. If hashes mismatch, treat the Job as suspect until the upload path is explained.
-
-Use `compare jobs` to gather metric evidence across explicit Jobs. Use `compare-runs` for a base-vs-exp view with config diff, metric deltas, direction checks, and explicit-rule checkpoint candidates. These reports keep `decision: not_provided`.
-
-Use `config diff-ref` only against an explicit reference Job. Do not infer "highest score" or "best config" unless the user supplies that policy.
-
-Use `ledger sync` to persist structured experiment history under `taiji-output/ledger/experiments.json`, `logs --errors` for quick error/tail extraction, and `diagnose job` to collect errors, log tails, and resolved configs for debugging.
-
-Use `ckpt-select` only with an explicit rule such as `--by valid_auc`, `--by valid_test_like_auc`, `--by logloss`, or `--by pareto`. Present the result as a candidate selected by that rule, not as a final recommendation.
-
-## Checkpoint Publish Workflow
-
-Use `ckpt-publish` to publish one scraped training checkpoint as a Taiji model. It reads `jobs-summary.csv` and `all-checkpoints.csv`, so run a targeted scrape first when the checkpoint is new:
-
-```bash
-taac2026 scrape --all --job-internal-id <JOB_INTERNAL_ID> --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
-taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json
-```
-
-Dry-run is the default. It builds the release plan but does not call Taiji. The default model name is `<Job Name> epoch<N> val auc <AUC>`, parsed from the checkpoint filename. The default model description is the Job description from `jobs-summary.csv`.
-
-Live publishing requires explicit confirmation:
-
-```bash
-taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
-```
-
-The captured endpoint is `POST /taskmanagement/api/v1/instances/external/<instanceId>/release_ckpt` with JSON body `{ name, desc, ckpt }`. After publishing, the command reads `get_ckpt` and verifies that the target checkpoint has `status: true`. Do not assume it is the only published checkpoint; observed responses can contain multiple `status: true` checkpoints. If cached `all-checkpoints.csv` already marks the target as published, live publishing is blocked unless `--force` is passed, to avoid accidental duplicate models.
-
-## Model And Evaluation Workflow
-
-Use `model list` to read published models from `/model`. Use `--search` when resolving the model created by `ckpt-publish`.
-
-Use `eval create` to prepare an evaluation task. Dry-run is the default. Prefer `--submit-name <LOCAL_SUBMIT_NAME>` when the user's packager already wrote inference code under `submits/<date>/<LOCAL_SUBMIT_NAME>/inference_code`; the command resolves that directory and uploads every direct file in the curated package. Exact submit-name matches win; fuzzy matches are allowed only when unique. If multiple packages match, ask the user to provide the full local submit package name.
-
-Use `--file-dir <INFER_FILE_DIR>` only as a manual fallback. With `--file-dir`, the command prepares local inference files for upload and creates the `POST /aide/api/evaluation_tasks/` payload. By default, `--file-dir` includes only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` files when present; pass `--include-all-files` only when intentionally uploading every direct file in that directory.
-
-If `--model-name` or `--model-search` is passed with `--cookie-file`, the command resolves the model from `model list` and infers `creator` from the model `task_id`. Live evaluation creation requires:
-
-```bash
-taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
-```
-
-The implemented local upload path is inferred from successful evaluation list responses: `2026_AMS_ALGO_Competition/<creator>/infer/local--<uuid>/<filename>`, uploaded with `/aide/api/evaluation_tasks/get_federation_token/`, then referenced in `files`. Because the HAR does not yet include the actual local-file upload interaction, treat the first live evaluation create as a controlled probe and verify it from `eval list`.
-
-Use `eval stop` for explicit stop requests. It is dry-run by default; live stop requires `--execute --yes`.
-
-Captured model/evaluation endpoints:
-
-- Model list: `GET /aide/api/external/mould/?page=1&page_size=20&search=`.
-- Evaluation template files: `GET /aide/api/evaluation_tasks/get_template/`.
-- Evaluation create: `POST /aide/api/evaluation_tasks/` with `{ mould_id, name, image_name, creator, files }`; observed create moves from `pending` to `infer_wait_resource`.
-- Evaluation list/status/score: `GET /aide/api/evaluation_tasks/?page=1&page_size=20`.
-- Evaluation stop: `POST /aide/api/evaluation_tasks/stop_task/` with `{ task_id }`.
-
-Still needed before making full publish-to-evaluate automation the default:
-
-- HAR for `/model` page load if model search/filter/detail/delete/rename behavior matters beyond the model list endpoint.
-- HAR for creating an evaluation with locally uploaded inference files, to validate the inferred COS upload path and confirm whether one `local--<uuid>` per file is required.
-- HAR for selecting a newly published model in evaluation when the model list is searched or paginated.
-- HAR for evaluation detail/log/download-result pages if the list response is not enough for debugging failed evaluations.
-
-## Implementation Notes
-
-- Job list endpoint is GET.
-- Instance list endpoint is POST with JSON body, not query params.
-- Metrics endpoint may return each metric as an array of chart objects; flatten all charts.
-- Job list rows do not include training code files. Fetch Job detail via `/taskmanagement/api/v1/webtasks/external/task/{jobInternalId}` and read all of `data.trainFiles`, not only `config.yaml`.
-- Training code files usually store COS keys in `trainFiles[].path`. Use `/aide/api/evaluation_tasks/get_federation_token/` and COS `getObject` before falling back to direct URL fetch.
-- Validate downloaded trainFiles before saving: reject Taiji frontend HTML, size mismatches, bad zip magic for `.zip`, non-mapping `config.yaml`, and invalid JSON. Always save `job-detail.json` and `train-files.json` even when some file content downloads fail.
-- Some failed or interrupted instances legitimately have zero metrics.
-- `--direct` bypasses Chromium and uses Node `fetch` with the Cookie header. It helps on headless servers, but it cannot fix an expired, IP-bound, or fingerprint-bound login token.
-- The output CSV can be large. Prefer streaming or long-form CSV for downstream analysis instead of loading the whole file into memory for ad hoc transformations.
-
-Load `references/workflow.md` when debugging endpoint behavior, auth, empty instances, or metric flattening.
+- For endpoint behavior, auth failures, download validation, and output schema, read `references/workflow.md`.
+- For live submit mechanics, read `references/submit-workflow.md`.
+- For minimal `code.zip + run.sh + config.yaml` package shape, read `examples/minimal-taiji-submit/README.md`.

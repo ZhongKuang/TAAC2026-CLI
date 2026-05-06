@@ -2,9 +2,9 @@
 
 [English](README.en.md)
 
-把 Taiji / TAAC 训练平台变成任何人和任何 agent 都能读取、比较、归档、提交训练的实验命令行工具。
+把 Taiji / TAAC 训练与评估平台变成任何人和任何 agent 都能读取、比较、归档、提交训练、发布模型和收集线上评估证据的实验命令行工具。
 
-TAAC2026 CLI 面向 `https://taiji.algo.qq.com/training`：它可以抓取训练任务、指标、日志、checkpoint、代码文件，比较两个 `config.yaml` 的语义差异，并通过已捕获的 Taiji API 流程准备、上传、创建和启动训练任务。所有本地产物默认收进 `taiji-output/`，不会把根目录弄得一团乱。
+TAAC2026 CLI 面向 `https://taiji.algo.qq.com/training`、`/model` 和 `/evaluation`：它可以抓取训练任务、指标、日志、checkpoint、代码文件，比较两个 `config.yaml` 的语义差异，发布 checkpoint 为模型，创建/停止/抓取评估任务，并通过已捕获的 Taiji API 流程准备、上传、创建和启动训练任务。所有本地产物默认收进 `taiji-output/`，不会把根目录弄得一团乱。
 
 `SKILL.md` 是通用 agent 操作手册：Codex、Claude Code、OpenAI Agents SDK、Cursor、Aider，或者任何能读仓库文件并运行 shell 的 agent，都可以按它来使用本 CLI。
 
@@ -60,6 +60,7 @@ taac2026 --help
 | 对比两个实验配置时只能肉眼扫 YAML | `compare-config-yaml.mjs` 做语义 diff，按配置路径报告新增、删除和变化项。 |
 | 上传训练容易传错 zip / config / run.sh / 标题和说明 | `prepare-taiji-submit.mjs` 先生成提交包和 manifest，记录 Job Name、Description、Git HEAD、dirty 状态和待上传文件。 |
 | 想自动提交但又怕误启动训练 | `submit-taiji.mjs` 默认 dry-run；真实创建必须显式 `--execute --yes`，启动必须额外 `--run`。 |
+| 线上评估分、infer 代码和失败日志只能在网页里看 | `eval scrape` 把 evaluation 任务、线上 AUC、event log 和 inference 代码一起归档。 |
 | 工具产物散落根目录，越用越乱 | 所有本地产物默认写入 `taiji-output/`，包括浏览器 profile、抓取结果、提交包、dry-run/live 结果和 config diff。 |
 
 ## 它让 Agent 可以做什么
@@ -69,6 +70,7 @@ taac2026 --help
 - 结合 Job 描述、config diff、日志和曲线，定位训练报错或指标异常。
 - 在提交前检查本次 zip/config/run.sh/name/description 是否和 manifest 一致。
 - 复用一个稳定模板 Job，自动替换 `code.zip`、`config.yaml`，并可显式覆写 `run.sh` 后按需启动训练。
+- 把训练 checkpoint 发布成模型，再创建评估任务，并把线上评估分、infer 代码和 event log 拉回本地。
 - 把平台页面里的短暂信息沉淀成长期可复盘的实验资产。
 
 ## 工具地图：目前有哪些命令
@@ -94,7 +96,10 @@ taac2026 --help
 | `model list` | 查询已发布模型，支持搜索。 | 找到要用于评估的模型 ID 和来源 Job。 |
 | `eval create` | 创建评估任务；支持 `--submit-name` 从本地 `submits/*/<name>/inference_code` 上传推理包。 | 把“发布模型 -> 提交 infer -> 创建评估”串起来。 |
 | `eval list` | 查看评估任务状态和分数。 | 跟踪 infer 是否成功、AUC 是否出来。 |
+| `eval scrape` | 翻页抓评估任务、分数，并可下载 event log 与 inference 代码文件。 | 把线上 test AUC、infer 代码和失败/EDA 日志拉成本地证据包。 |
 | `eval stop` | 停止评估任务；默认 dry-run，live 需确认。 | 停掉误提交或不想继续占资源的评估。 |
+
+`evaluation` 是 `eval` 的别名；文档统一使用 `eval`。
 
 ## 产物地图
 
@@ -110,6 +115,7 @@ taac2026 --help
 | `taiji-output/config-diffs/` | config 语义 diff 输出。 |
 | `taiji-output/submit-bundle/` | 本地准备好的提交包和 manifest。 |
 | `taiji-output/submit-live/<timestamp>/` | live submit / run 的请求计划和响应。 |
+| `taiji-output/evaluations/` | 评估任务汇总、线上分数、event log 和 inference 代码文件。 |
 | `taiji-output/reports/` | compare、diagnose、model、eval 等命令的 JSON / Markdown 报告。 |
 | `taiji-output/secrets/` | Cookie 或 headers 的推荐存放位置，永远不要提交。 |
 
@@ -207,18 +213,27 @@ taac2026 ckpt-select --job 56242 --by valid_auc --json
 
 ```bash
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --json
+taac2026 ckpt-publish --job 56242 --by valid_auc --json
+taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --instance-id 95cdb4769de33483019df8ac5f843305 --json
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
 ```
 
 查看已发布模型，创建或停止评估任务。`eval create` 默认 dry-run。推荐用 `--submit-name` 从本地 `submits/<日期>/<提交包名>/inference_code` 里找到打包机已经整理好的推理代码，并上传该目录第一层所有文件。`--file-dir` 是手动兜底路径，默认只打包 `dataset.py`、`dense_transform.py`、`eda.py`、`infer.py`、`model.py` 这几个直接文件，避免误把仓库根目录杂物传上去。真实创建必须显式 `--execute --yes`。
 
 ```bash
-taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "V1.4.6" --json
-taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --json
-taac2026 eval create --model-name "1.4.6 epoch" --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --json
-taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
-taac2026 eval stop --task-id 62362 --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "V1.4.6" --out model-list.json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --out eval-create.json
+taac2026 eval create --model-name "1.4.6 epoch" --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json
+taac2026 eval create --model-search "1.4.6" --submits-root ./submits --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json
+taac2026 eval list --cookie-file taiji-output/secrets/taiji-cookie.txt --page-size 20 --out eval-list.json
+taac2026 eval scrape --task-id 62726 --logs --code --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-create-live.json
+taac2026 eval stop --task-id 62362 --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-stop-live.json
 ```
+
+`eval create` 还支持 `--image-name`、`--include-all-files` 等低频选项；`--include-all-files` 会上传目录第一层所有文件，使用前应明确确认。`model list`、`eval create/list/stop` 默认打印 JSON；传 `--out xxx.json` 时会写入 `taiji-output/reports/xxx.json`。
+
+`eval scrape` 会写入 `taiji-output/evaluations/eval-summary.csv`、`eval-tasks.json`、`logs/<evalTaskId>.txt` 和 `code/<evalTaskId>/files/...`。它只抓证据，不创建或启动评估任务。`--out-dir` 是显式输出目录：默认是 `taiji-output/evaluations/`；如果写 `--out-dir foo`，会写到当前目录下的 `foo`，不是自动变成 `taiji-output/foo`。推荐自定义时写成 `--out-dir taiji-output/evaluations-<name>`。
 
 ## 自动提交训练
 
@@ -357,9 +372,11 @@ taac2026 submit ... --execute --yes --allow-add-file
 - Cookie、HAR、headers 建议放在 `taiji-output/secrets/` 或 `taiji-output/har/`，不要提交。
 - 所有脚本默认把本地产物写到 `taiji-output/`。
 - 相对输出路径不能包含 `..`；如果确实要写到外部位置，请使用绝对路径。
+- `eval scrape --out-dir` 是显式目录参数；默认是 `taiji-output/evaluations/`，自定义时推荐仍写在 `taiji-output/` 下。
 - `submit-taiji.mjs` 默认 dry-run。
 - 真实平台写操作必须显式加 `--execute --yes`。
 - 启动训练必须额外显式加 `--run`。
+- `ckpt-publish --force`、`submit --allow-add-file`、`eval create --include-all-files` 都需要额外确认。
 - 脚本会保留模板 Job 的环境、镜像和入口；默认严格替换模板中已有的 `code.zip` 和 `config.yaml`，传入 `--run-sh` 时才严格替换同名 `run.sh`，传入 `--file` 或 `--file-dir` 时才严格替换对应通用文件。
 
 ## 输出目录
@@ -373,7 +390,15 @@ taiji-output/
   browser-profile/
   code/<jobId>/
   config-diffs/
+  evaluations/
+    eval-summary.csv
+    eval-tasks.json
+    code/<evalTaskId>/
+    logs/<evalTaskId>.txt
+  ledger/
+    experiments.json
   logs/<jobId>/
+  reports/
   secrets/
   submit-bundle/
   submit-live/<timestamp>/
@@ -411,7 +436,7 @@ taiji-output/
 | `scripts/prepare-taiji-submit.mjs` | 准备本地提交包，记录 Git 状态和上传文件 |
 | `scripts/submit-taiji.mjs` | dry-run 或显式执行 Taiji 上传、创建、Run 流程 |
 | `scripts/experiment-tools.mjs` | 提交前检查、提交后回读校验、实验对比、账本同步、日志诊断、checkpoint 选择与发布 |
-| `scripts/evaluation-tools.mjs` | 模型列表、评估创建 dry-run / live、评估列表和停止 |
+| `scripts/evaluation-tools.mjs` | 模型列表、评估创建 dry-run / live、评估列表、评估证据抓取和停止 |
 
 ## 故障判断
 

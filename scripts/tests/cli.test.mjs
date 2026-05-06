@@ -53,5 +53,6 @@ test("taac2026 CLI dispatches experiment helper commands", async () => {
   assert.match(compareRunsHelp, /compare-runs/);
   assert.match(ckptPublishHelp, /ckpt-publish/);
   assert.match(evalHelp, /eval create/);
+  assert.match(evalHelp, /eval scrape/);
   assert.match(evalHelp, /--submit-name/);
 });

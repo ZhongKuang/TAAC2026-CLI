@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   createEvaluation,
   listModels,
+  scrapeEvaluations,
   stopEvaluation,
 } from "../evaluation-tools.mjs";
 
@@ -217,6 +218,105 @@ test("eval stop is dry-run by default and live only with execute yes", async () 
     const live = await stopEvaluation({ taskId: "62362", cookieFile, execute: true, yes: true });
     assert.equal(live.mode, "execute");
     assert.equal(live.response.message, "Evaluation_task stopped.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("eval scrape collects paged tasks, scores, logs, and inference code files", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "taac2026-eval-scrape-"));
+  const cookieFile = path.join(tempRoot, "cookie.txt");
+  const outDir = path.join(tempRoot, "evaluations");
+  await writeFile(cookieFile, "cookie: a=b");
+
+  const originalFetch = globalThis.fetch;
+  const seenUrls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    seenUrls.push(String(url));
+    assert.equal(init.headers.cookie, "a=b");
+    if (String(url).endsWith("/aide/api/evaluation_tasks/?page=1&page_size=1")) {
+      return new Response(JSON.stringify({
+        count: 2,
+        next: "http://taiji.algo.qq.com/api/evaluation_tasks/?page=2&page_size=1",
+        previous: null,
+        results: [{
+          id: 101,
+          name: "exp_a_eval",
+          mould_id: 29132,
+          status: "succeed",
+          score: 0.821395,
+          files: [{ name: "infer.py", path: "2026_AMS_ALGO_Competition/ams_1/infer/local--a/infer.py", size: 15, mtime: "2026-05-06 10:00:00" }],
+          infer_time: "298.7",
+          results: { auc: 0.821395 },
+          error_msg: null,
+        }],
+      }), { status: 200 });
+    }
+    if (String(url).endsWith("/aide/api/evaluation_tasks/?page=2&page_size=1")) {
+      return new Response(JSON.stringify({
+        count: 2,
+        next: null,
+        previous: "http://taiji.algo.qq.com/api/evaluation_tasks/?page=1&page_size=1",
+        results: [{
+          id: 102,
+          name: "exp_b_eval",
+          mould_id: 28626,
+          status: "failed",
+          score: null,
+          files: [{ name: "dataset.py", path: "2026_AMS_ALGO_Competition/ams_1/infer/local--b/dataset.py", size: 17, mtime: "2026-05-06 11:00:00" }],
+          infer_time: null,
+          results: {},
+          error_msg: "runtime failed",
+        }],
+      }), { status: 200 });
+    }
+    if (String(url).endsWith("/aide/api/evaluation_tasks/event_log/?task_id=101")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { list: [{ time: "2026-05-06 10:10:00", message: "auc done\n" }] },
+      }), { status: 200 });
+    }
+    if (String(url).endsWith("/aide/api/evaluation_tasks/event_log/?task_id=102")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { list: [{ time: "2026-05-06 11:10:00", message: "Traceback\n" }] },
+      }), { status: 200 });
+    }
+    throw new Error(`Unexpected URL ${url}`);
+  };
+
+  try {
+    const result = await scrapeEvaluations({
+      all: true,
+      logs: true,
+      code: true,
+      cookieFile,
+      outDir,
+      pageSize: "1",
+      downloadFile: async (_cookieHeader, file) => ({
+        buffer: Buffer.from(file.name === "infer.py" ? "print('infer')\n" : "print('dataset')\n"),
+        contentType: "text/x-python",
+      }),
+    });
+
+    assert.equal(result.syncStats.tasksListed, 2);
+    assert.equal(result.syncStats.logsFetched, 2);
+    assert.equal(result.syncStats.codeFilesSaved, 2);
+    assert.ok(seenUrls.some((url) => url.includes("page=2")));
+
+    const summary = await readFile(path.join(outDir, "eval-summary.csv"), "utf8");
+    assert.match(summary, /exp_a_eval/);
+    assert.match(summary, /0\.821395/);
+    assert.match(summary, /runtime failed/);
+
+    const tasks = JSON.parse(await readFile(path.join(outDir, "eval-tasks.json"), "utf8"));
+    assert.equal(tasks.tasksById["101"].log.lines, 1);
+    assert.equal(tasks.tasksById["102"].code.saved, 1);
+
+    assert.equal(await readFile(path.join(outDir, "logs", "101.txt"), "utf8"), "auc done\n");
+    assert.equal(await readFile(path.join(outDir, "logs", "102.txt"), "utf8"), "Traceback\n");
+    assert.equal(await readFile(path.join(outDir, "code", "101", "files", "infer.py"), "utf8"), "print('infer')\n");
+    assert.equal(await readFile(path.join(outDir, "code", "102", "files", "dataset.py"), "utf8"), "print('dataset')\n");
   } finally {
     globalThis.fetch = originalFetch;
   }
