@@ -71,21 +71,47 @@ taac2026 --help
 - 复用一个稳定模板 Job，自动替换 `code.zip`、`config.yaml`，并可显式覆写 `run.sh` 后按需启动训练。
 - 把平台页面里的短暂信息沉淀成长期可复盘的实验资产。
 
-## 核心能力
+## 工具地图：目前有哪些命令
 
-| 能力 | 输出 |
+这些命令的定位是“收集证据、减少误操作、打通流程”。它们不会替你拍脑袋决定哪个实验最好，但会把做判断需要的上下文一次性整理出来。
+
+| 命令 | 能做什么 | 常见用途 |
+| --- | --- | --- |
+| `scrape` | 抓 Job 列表、实例、metrics、checkpoint、日志和训练代码；支持全量、增量、单 Job 定向抓取。 | 每天同步平台实验；失败后把日志和代码现场拉回本地。 |
+| `diff-config` | 语义比较两个 YAML，不受字段顺序和格式影响。 | 快速确认两版 `config.yaml` 到底改了哪些参数。 |
+| `prepare-submit` | 准备本地提交包，记录上传文件、Job Name、Description、Git HEAD 和 dirty 状态。 | 提交前把“打算上传什么”固化成 manifest。 |
+| `submit` | dry-run 或 live 执行复制模板 Job、上传 trainFiles、创建 Job、可选 Run。 | 自动提交训练；默认安全预演，live 需要 `--execute --yes`。 |
+| `submit doctor` | 检查提交包结构、文件 hash 和 manifest。 | 提交前防止 zip/config/run.sh 或说明信息错位。 |
+| `submit verify` | 回读平台 trainFiles，和本地提交包做 hash / config 对齐。 | 提交后确认平台实际收到的就是本地这版。 |
+| `compare jobs` | 把多个 Job 的描述、状态、best/final 指标和人工分整理成证据表。 | 少读 CSV，快速看一组实验的横向差异。 |
+| `compare-runs` | 对比 base 与 exp，合并 config diff、指标差异和 checkpoint 候选。 | 判断“一次改动”带来的曲线变化，但不替你做最终决策。 |
+| `config diff-ref` | 用本地 config 对齐某个明确 Job 的平台配置。 | 检查当前配置是否和某个线上实验一致。 |
+| `ledger sync` | 从抓取结果同步结构化实验账本。 | 长期沉淀实验记录，方便复盘。 |
+| `logs` | 从已抓日志中抽取 Error / Traceback 和尾部上下文。 | 快速定位失败原因，减少复制粘贴日志。 |
+| `diagnose job` | 汇总失败 Job 的状态、日志、配置和代码线索。 | 把“为什么挂了”变成 agent 可读的诊断包。 |
+| `ckpt-select` | 按显式规则列出 checkpoint 候选，例如 `valid_auc` 或 pareto。 | 找候选 checkpoint，避免手动翻曲线。 |
+| `ckpt-publish` | 把训练 checkpoint 发布成 Taiji 模型；默认 dry-run，live 需确认。 | 从训练流程串到模型管理页。 |
+| `model list` | 查询已发布模型，支持搜索。 | 找到要用于评估的模型 ID 和来源 Job。 |
+| `eval create` | 创建评估任务；支持 `--submit-name` 从本地 `submits/*/<name>/inference_code` 上传推理包。 | 把“发布模型 -> 提交 infer -> 创建评估”串起来。 |
+| `eval list` | 查看评估任务状态和分数。 | 跟踪 infer 是否成功、AUC 是否出来。 |
+| `eval stop` | 停止评估任务；默认 dry-run，live 需确认。 | 停掉误提交或不想继续占资源的评估。 |
+
+## 产物地图
+
+| 产物 | 内容 |
 | --- | --- |
-| 批量抓 Job | `jobs.json`、`jobs-summary.csv` |
-| 抓 Metrics / tf_events | `all-metrics-long.csv` |
-| 抓 Checkpoints | `all-checkpoints.csv` |
-| 抓 Pod logs | `logs/<jobId>/<instanceId>.txt` |
-| 下载训练代码 | `code/<jobId>/files/...` |
-| 保存任务详情 | `code/<jobId>/job-detail.json`、`train-files.json` |
-| 比较 config | `taiji-output/config-diffs/*.json` 或 Markdown |
-| 准备提交包 | `taiji-output/submit-bundle/` |
-| dry-run / live submit | `taiji-output/submit-live/<timestamp>/` |
-| 实验安全检查 / 回读校验 | `submit doctor`、`submit verify` |
-| 实验证据整理 | `compare jobs`、`compare-runs`、`config diff-ref`、`ledger sync`、`logs`、`diagnose job`、`ckpt-select`、`ckpt-publish` |
+| `taiji-output/jobs.json` | 完整原始和归一化 Job / instance / metric / code 元数据。 |
+| `taiji-output/jobs-summary.csv` | 一行一个 Job，适合快速 grep、排序和人工浏览。 |
+| `taiji-output/all-metrics-long.csv` | 长表 metrics，保留 `jobId + instanceId + metric + step`。 |
+| `taiji-output/all-checkpoints.csv` | checkpoint 名称、指标、发布状态和来源实例。 |
+| `taiji-output/logs/<jobId>/<instanceId>.txt` | Pod 日志文本。 |
+| `taiji-output/code/<jobId>/files/...` | 平台 trainFiles 下载副本。 |
+| `taiji-output/code/<jobId>/job-detail.json` | Job detail 原始响应和 trainFiles 元数据。 |
+| `taiji-output/config-diffs/` | config 语义 diff 输出。 |
+| `taiji-output/submit-bundle/` | 本地准备好的提交包和 manifest。 |
+| `taiji-output/submit-live/<timestamp>/` | live submit / run 的请求计划和响应。 |
+| `taiji-output/reports/` | compare、diagnose、model、eval 等命令的 JSON / Markdown 报告。 |
+| `taiji-output/secrets/` | Cookie 或 headers 的推荐存放位置，永远不要提交。 |
 
 ## 快速开始
 
@@ -182,6 +208,16 @@ taac2026 ckpt-select --job 56242 --by valid_auc --json
 ```bash
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --json
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+```
+
+查看已发布模型，创建或停止评估任务。`eval create` 默认 dry-run。推荐用 `--submit-name` 从本地 `submits/<日期>/<提交包名>/inference_code` 里找到打包机已经整理好的推理代码，并上传该目录第一层所有文件。`--file-dir` 是手动兜底路径，默认只打包 `dataset.py`、`dense_transform.py`、`eda.py`、`infer.py`、`model.py` 这几个直接文件，避免误把仓库根目录杂物传上去。真实创建必须显式 `--execute --yes`。
+
+```bash
+taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "V1.4.6" --json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --json
+taac2026 eval create --model-name "1.4.6 epoch" --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+taac2026 eval stop --task-id 62362 --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
 ```
 
 ## 自动提交训练
@@ -375,6 +411,7 @@ taiji-output/
 | `scripts/prepare-taiji-submit.mjs` | 准备本地提交包，记录 Git 状态和上传文件 |
 | `scripts/submit-taiji.mjs` | dry-run 或显式执行 Taiji 上传、创建、Run 流程 |
 | `scripts/experiment-tools.mjs` | 提交前检查、提交后回读校验、实验对比、账本同步、日志诊断、checkpoint 选择与发布 |
+| `scripts/evaluation-tools.mjs` | 模型列表、评估创建 dry-run / live、评估列表和停止 |
 
 ## 故障判断
 

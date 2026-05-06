@@ -71,21 +71,47 @@ Most importantly, metrics should be compared by an agent across runs, not by hum
 - Reuse a known-good template Job, replace `code.zip` and `config.yaml`, optionally overwrite `run.sh`, and optionally start training.
 - Preserve transient web-console information as durable experiment assets.
 
-## Core Capabilities
+## Tool Map: Available Commands
 
-| Capability | Output |
+These commands are meant to collect evidence, reduce manual mistakes, and connect workflows. They do not decide which experiment is best for you; they make the context easy for humans and agents to judge.
+
+| Command | What it does | Common use |
+| --- | --- | --- |
+| `scrape` | Scrapes Job lists, instances, metrics, checkpoints, logs, and training code; supports full, incremental, and targeted Job sync. | Daily platform sync; pull logs and code context after a failure. |
+| `diff-config` | Compares two YAML files semantically, independent of field order and formatting. | See exactly which `config.yaml` parameters changed. |
+| `prepare-submit` | Builds a local submit bundle and records upload files, Job Name, Description, Git HEAD, and dirty state. | Freeze the intended submission as a manifest before upload. |
+| `submit` | Dry-runs or executes copy-template, trainFile upload, Job creation, and optional Run. | Automate training submission; live mode requires `--execute --yes`. |
+| `submit doctor` | Checks submit bundle structure, file hashes, and manifest. | Catch mismatched zip/config/run.sh or description before submission. |
+| `submit verify` | Reads platform trainFiles back and compares them with the local bundle. | Confirm the platform received the exact intended files. |
+| `compare jobs` | Summarizes multiple Jobs with descriptions, status, best/final metrics, and manually recorded scores. | Compare a set of experiments without digging through CSVs. |
+| `compare-runs` | Compares a base Job and an experiment Job with config diff, metric deltas, and checkpoint candidates. | Inspect what one change did to curves, without outsourcing the final decision. |
+| `config diff-ref` | Compares a local config against one explicit platform Job config. | Check whether local config matches a known online experiment. |
+| `ledger sync` | Syncs a structured experiment ledger from scraped outputs. | Keep long-term experiment records for review. |
+| `logs` | Extracts Error / Traceback snippets and tail context from scraped logs. | Diagnose failures without manual log copy-paste. |
+| `diagnose job` | Bundles failed Job status, logs, config, and code evidence. | Give an agent a compact "why did this fail?" package. |
+| `ckpt-select` | Lists checkpoint candidates by explicit rules such as `valid_auc` or pareto. | Find checkpoint candidates without manually scanning curves. |
+| `ckpt-publish` | Publishes a training checkpoint as a Taiji model; dry-run by default. | Bridge training output into model management. |
+| `model list` | Lists published models with optional search. | Resolve the model ID and source Job for evaluation. |
+| `eval create` | Creates evaluation tasks; supports `--submit-name` to upload local `submits/*/<name>/inference_code`. | Connect "publish model -> submit infer -> create evaluation". |
+| `eval list` | Lists evaluation status and scores. | Track whether inference succeeded and whether AUC is available. |
+| `eval stop` | Stops an evaluation task; dry-run by default. | Stop mistaken or resource-wasting evaluations. |
+
+## Artifact Map
+
+| Artifact | Contains |
 | --- | --- |
-| Bulk scrape Jobs | `jobs.json`, `jobs-summary.csv` |
-| Scrape Metrics / tf_events | `all-metrics-long.csv` |
-| Scrape Checkpoints | `all-checkpoints.csv` |
-| Scrape Pod logs | `logs/<jobId>/<instanceId>.txt` |
-| Download training code | `code/<jobId>/files/...` |
-| Save Job detail | `code/<jobId>/job-detail.json`, `train-files.json` |
-| Compare configs | `taiji-output/config-diffs/*.json` or Markdown |
-| Prepare submit bundle | `taiji-output/submit-bundle/` |
-| Dry-run / live submit | `taiji-output/submit-live/<timestamp>/` |
-| Submit safety / read-back verification | `submit doctor`, `submit verify` |
-| Experiment evidence tools | `compare jobs`, `compare-runs`, `config diff-ref`, `ledger sync`, `logs`, `diagnose job`, `ckpt-select`, `ckpt-publish` |
+| `taiji-output/jobs.json` | Complete raw and normalized Job / instance / metric / code metadata. |
+| `taiji-output/jobs-summary.csv` | One row per Job for quick grep, sorting, and human browsing. |
+| `taiji-output/all-metrics-long.csv` | Long-form metrics keyed by `jobId + instanceId + metric + step`. |
+| `taiji-output/all-checkpoints.csv` | Checkpoint names, metrics, publish status, and source instances. |
+| `taiji-output/logs/<jobId>/<instanceId>.txt` | Pod log text. |
+| `taiji-output/code/<jobId>/files/...` | Downloaded platform trainFiles. |
+| `taiji-output/code/<jobId>/job-detail.json` | Raw Job detail response and trainFiles metadata. |
+| `taiji-output/config-diffs/` | Semantic config diff output. |
+| `taiji-output/submit-bundle/` | Prepared local submit bundle and manifest. |
+| `taiji-output/submit-live/<timestamp>/` | Live submit / run plans and responses. |
+| `taiji-output/reports/` | JSON / Markdown reports from compare, diagnose, model, and eval commands. |
+| `taiji-output/secrets/` | Recommended location for cookies or headers. Never commit it. |
 
 ## Quick Start
 
@@ -182,6 +208,16 @@ Publish one training checkpoint as a model. Dry-run is the default; live publish
 ```bash
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --json
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+```
+
+List published models, create evaluations, or stop evaluations. `eval create` is dry-run by default. Prefer `--submit-name` so the CLI resolves the prepared inference package under `submits/<date>/<submit-name>/inference_code` and uploads every direct file from that curated directory. `--file-dir` is the manual fallback; by default it includes only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` files, so a repository root is not uploaded accidentally. Live creation requires explicit `--execute --yes`.
+
+```bash
+taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "V1.4.6" --json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --json
+taac2026 eval create --model-name "1.4.6 epoch" --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+taac2026 eval stop --task-id 62362 --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
 ```
 
 ## Submit Training
@@ -375,6 +411,7 @@ Poor fits:
 | `scripts/prepare-taiji-submit.mjs` | Prepare a local submit bundle and record Git state |
 | `scripts/submit-taiji.mjs` | Dry-run or explicitly execute upload, Job creation, and Run |
 | `scripts/experiment-tools.mjs` | Submit doctor, submit verify, Job comparison, ledger sync, log diagnosis, checkpoint selection, and checkpoint publishing |
+| `scripts/evaluation-tools.mjs` | Model listing, evaluation create dry-run / live create, evaluation listing, and stop |
 
 ## Troubleshooting
 

@@ -75,6 +75,10 @@ taac2026 logs --job <JOB_INTERNAL_ID> --errors --tail 100 --json
 taac2026 diagnose job --job-internal-id <JOB_INTERNAL_ID> --json
 taac2026 ckpt-select --job <JOB_INTERNAL_ID> --by valid_auc --json
 taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json
+taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "<MODEL_NAME>" --json
+taac2026 eval create --model-id <MODEL_ID> --creator <AMS_CREATOR> --submit-name <LOCAL_SUBMIT_NAME> --json
+taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --json
+taac2026 eval stop --task-id <EVAL_TASK_ID> --json
 ```
 
 Use these commands to collect evidence and catch mistakes; do not present them as automatic experiment decision makers.
@@ -210,9 +214,25 @@ taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --cookie-file
 
 The captured endpoint is `POST /taskmanagement/api/v1/instances/external/<instanceId>/release_ckpt` with JSON body `{ name, desc, ckpt }`. After publishing, the command reads `get_ckpt` and verifies that the target checkpoint has `status: true`. Do not assume it is the only published checkpoint; observed responses can contain multiple `status: true` checkpoints. If cached `all-checkpoints.csv` already marks the target as published, live publishing is blocked unless `--force` is passed, to avoid accidental duplicate models.
 
-## Model And Evaluation Gaps
+## Model And Evaluation Workflow
 
-Current captured model/evaluation endpoints:
+Use `model list` to read published models from `/model`. Use `--search` when resolving the model created by `ckpt-publish`.
+
+Use `eval create` to prepare an evaluation task. Dry-run is the default. Prefer `--submit-name <LOCAL_SUBMIT_NAME>` when the user's packager already wrote inference code under `submits/<date>/<LOCAL_SUBMIT_NAME>/inference_code`; the command resolves that directory and uploads every direct file in the curated package. Exact submit-name matches win; fuzzy matches are allowed only when unique. If multiple packages match, ask the user to provide the full local submit package name.
+
+Use `--file-dir <INFER_FILE_DIR>` only as a manual fallback. With `--file-dir`, the command prepares local inference files for upload and creates the `POST /aide/api/evaluation_tasks/` payload. By default, `--file-dir` includes only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` files when present; pass `--include-all-files` only when intentionally uploading every direct file in that directory.
+
+If `--model-name` or `--model-search` is passed with `--cookie-file`, the command resolves the model from `model list` and infers `creator` from the model `task_id`. Live evaluation creation requires:
+
+```bash
+taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+```
+
+The implemented local upload path is inferred from successful evaluation list responses: `2026_AMS_ALGO_Competition/<creator>/infer/local--<uuid>/<filename>`, uploaded with `/aide/api/evaluation_tasks/get_federation_token/`, then referenced in `files`. Because the HAR does not yet include the actual local-file upload interaction, treat the first live evaluation create as a controlled probe and verify it from `eval list`.
+
+Use `eval stop` for explicit stop requests. It is dry-run by default; live stop requires `--execute --yes`.
+
+Captured model/evaluation endpoints:
 
 - Model list: `GET /aide/api/external/mould/?page=1&page_size=20&search=`.
 - Evaluation template files: `GET /aide/api/evaluation_tasks/get_template/`.
@@ -220,10 +240,10 @@ Current captured model/evaluation endpoints:
 - Evaluation list/status/score: `GET /aide/api/evaluation_tasks/?page=1&page_size=20`.
 - Evaluation stop: `POST /aide/api/evaluation_tasks/stop_task/` with `{ task_id }`.
 
-Still needed before implementing full publish-to-evaluate automation:
+Still needed before making full publish-to-evaluate automation the default:
 
 - HAR for `/model` page load if model search/filter/detail/delete/rename behavior matters beyond the model list endpoint.
-- HAR for creating an evaluation with locally uploaded inference files, including any COS upload path and whether it reuses `/aide/api/evaluation_tasks/get_federation_token/`.
+- HAR for creating an evaluation with locally uploaded inference files, to validate the inferred COS upload path and confirm whether one `local--<uuid>` per file is required.
 - HAR for selecting a newly published model in evaluation when the model list is searched or paginated.
 - HAR for evaluation detail/log/download-result pages if the list response is not enough for debugging failed evaluations.
 

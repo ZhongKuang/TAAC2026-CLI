@@ -15,7 +15,7 @@
     "prepare:submit": "node scripts/prepare-taiji-submit.mjs",
     "submit": "node scripts/submit-taiji.mjs",
     "test": "node --test scripts/tests/*.test.mjs",
-    "check": "node --check bin/taac2026.mjs && node --check scripts/scrape-taiji.mjs && node --check scripts/compare-config-yaml.mjs && node --check scripts/prepare-taiji-submit.mjs && node --check scripts/submit-taiji.mjs && node --check scripts/experiment-tools.mjs"
+    "check": "node --check bin/taac2026.mjs && node --check scripts/scrape-taiji.mjs && node --check scripts/compare-config-yaml.mjs && node --check scripts/prepare-taiji-submit.mjs && node --check scripts/submit-taiji.mjs && node --check scripts/experiment-tools.mjs && node --check scripts/evaluation-tools.mjs"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",
