@@ -85,7 +85,7 @@ taac2026 --help
 | 准备提交包 | `taiji-output/submit-bundle/` |
 | dry-run / live submit | `taiji-output/submit-live/<timestamp>/` |
 | 实验安全检查 / 回读校验 | `submit doctor`、`submit verify` |
-| 实验证据整理 | `compare jobs`、`compare-runs`、`config diff-ref`、`ledger sync`、`logs`、`diagnose job`、`ckpt-select` |
+| 实验证据整理 | `compare jobs`、`compare-runs`、`config diff-ref`、`ledger sync`、`logs`、`diagnose job`、`ckpt-select`、`ckpt-publish` |
 
 ## 快速开始
 
@@ -175,6 +175,13 @@ taac2026 diagnose job --job-internal-id 56242 --json
 ```bash
 taac2026 logs --job 60414 --errors --tail 100 --json
 taac2026 ckpt-select --job 56242 --by valid_auc --json
+```
+
+把指定训练 checkpoint 发布成模型。默认 dry-run，只生成计划；真正发布必须显式 `--execute --yes`。默认模型名为 `<Job Name> epoch<N> val auc <AUC>`，描述复用 Job Description。若缓存里目标 checkpoint 已经是发布态，live 发布会被拦住，除非额外传 `--force`，避免重复创建模型。
+
+```bash
+taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --json
+taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
 ```
 
 ## 自动提交训练
@@ -367,7 +374,7 @@ taiji-output/
 | `scripts/compare-config-yaml.mjs` | 语义比较两个 YAML 配置 |
 | `scripts/prepare-taiji-submit.mjs` | 准备本地提交包，记录 Git 状态和上传文件 |
 | `scripts/submit-taiji.mjs` | dry-run 或显式执行 Taiji 上传、创建、Run 流程 |
-| `scripts/experiment-tools.mjs` | 提交前检查、提交后回读校验、实验对比、账本同步和日志诊断 |
+| `scripts/experiment-tools.mjs` | 提交前检查、提交后回读校验、实验对比、账本同步、日志诊断、checkpoint 选择与发布 |
 
 ## 故障判断
 

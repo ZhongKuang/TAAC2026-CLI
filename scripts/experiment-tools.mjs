@@ -8,6 +8,7 @@ import yaml from "js-yaml";
 import { validateTrainFileDownload } from "./scrape-taiji.mjs";
 
 const DEFAULT_OUT_ROOT = "taiji-output";
+const TAIJI_ORIGIN = "https://taiji.algo.qq.com";
 
 function usage() {
   return `Usage:
@@ -17,6 +18,7 @@ function usage() {
   taac2026 compare-runs --base <id> --exp <id> [--config] [--metrics] [--json]
   taac2026 logs --job <id> --errors [--tail 100] [--json]
   taac2026 ckpt-select --job <id> --by valid_auc [--json]
+  taac2026 ckpt-publish --job <id> --ckpt <ckpt-name> --cookie-file <file> [--execute --yes] [--force]
   taac2026 config diff-ref --config <config.yaml> --job-internal-id <id> [--output-dir taiji-output]
   taac2026 ledger sync [--output-dir taiji-output] [--out <file>]
   taac2026 diagnose job --job-internal-id <id> [--output-dir taiji-output] [--json]`;
@@ -25,7 +27,7 @@ function usage() {
 function parseArgs(argv) {
   const positional = [];
   const args = { positional };
-  const booleanFlags = new Set(["json", "errors", "config", "metrics"]);
+  const booleanFlags = new Set(["json", "errors", "config", "metrics", "execute", "yes", "force"]);
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--help" || arg === "-h") args.help = true;
@@ -142,6 +144,47 @@ async function loadMetricRows(outputDir) {
 
 async function loadCheckpointRows(outputDir) {
   return readCsv(path.join(outputDir, "all-checkpoints.csv"));
+}
+
+function extractCookieHeader(fileContent) {
+  const text = fileContent.trim();
+  const headerLine = text.match(/^cookie:\s*(.+)$/im);
+  if (headerLine) return headerLine[1].trim();
+  const curlHeader = text.match(/(?:-H|--header)\s+(['"])cookie:\s*([\s\S]*?)\1/i);
+  if (curlHeader) return curlHeader[2].trim();
+  return text.replace(/^cookie:\s*/i, "").trim();
+}
+
+function taijiHeaders(cookieHeader, refererPath = "/training") {
+  return {
+    accept: "application/json, text/plain, */*",
+    "content-type": "application/json",
+    cookie: cookieHeader,
+    referer: `${TAIJI_ORIGIN}${refererPath}`,
+    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147 Safari/537.36",
+  };
+}
+
+async function fetchTaijiJson(cookieHeader, endpoint, options = {}) {
+  const url = new URL(endpoint, TAIJI_ORIGIN);
+  const init = {
+    method: options.method || "GET",
+    headers: taijiHeaders(cookieHeader, options.refererPath),
+  };
+  if (options.body !== undefined) init.body = JSON.stringify(options.body);
+  const response = await fetch(url.href, init);
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text;
+  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${url.pathname}: ${String(text).slice(0, 300)}`);
+  if (body?.error?.code && body.error.code !== "SUCCESS") {
+    throw new Error(`Taiji API ${url.pathname} failed: ${body.error.code} ${body.error.message || body.error.cause || ""}`.trim());
+  }
+  return body;
 }
 
 function matchJob(row, options) {
@@ -293,8 +336,8 @@ function parseCheckpointName(ckpt) {
   const text = String(ckpt ?? "");
   const step = text.match(/global_step(\d+)/i);
   const epoch = text.match(/epoch=(\d+)/i);
-  const auc = text.match(/AUC=([0-9.]+)/i);
-  const logloss = text.match(/Logloss=([0-9.]+)/i);
+  const auc = text.match(/AUC=([0-9]+(?:\.[0-9]+)?)/i);
+  const logloss = text.match(/Logloss=([0-9]+(?:\.[0-9]+)?)/i);
   return {
     step: step ? Number(step[1]) : null,
     epoch: epoch ? Number(epoch[1]) : null,
@@ -659,6 +702,83 @@ export async function compareRuns(options) {
   };
 }
 
+function defaultCheckpointModelName(job, checkpoint) {
+  const parsed = checkpoint.parsed ?? parseCheckpointName(checkpoint.ckpt);
+  const parts = [job.name || job.jobInternalId || job.jobId].filter(Boolean);
+  if (parsed.epoch != null) parts.push(`epoch${parsed.epoch}`);
+  if (parsed.auc != null) parts.push(`val auc ${parsed.auc.toFixed(6)}`);
+  return parts.join(" ");
+}
+
+async function resolveCheckpointPublishTarget(outputDir, job, options) {
+  const checkpoints = checkpointRowsForJob(await loadCheckpointRows(outputDir), job.jobInternalId);
+  let ckptName = options.ckpt;
+  if (!ckptName && options.by) {
+    const spec = ruleSpec(options.by);
+    if (spec.mode === "pareto") throw new Error("ckpt-publish does not accept --by pareto; pass an explicit --ckpt");
+    const rows = metricRowsForJob(await loadMetricRows(outputDir), job.jobInternalId);
+    ckptName = selectCandidateBySpec(rows, checkpoints, spec, job.jobInternalId).ckpt;
+  }
+  required(ckptName, "Missing --ckpt or --by");
+
+  const matches = checkpoints.filter((checkpoint) => {
+    const ckptMatches = checkpoint.ckpt === ckptName;
+    const instanceMatches = !options.instanceId || checkpoint.instanceId === options.instanceId;
+    return ckptMatches && instanceMatches;
+  });
+  if (!matches.length) {
+    throw new Error(`Checkpoint not found in cached all-checkpoints.csv for job ${job.jobInternalId}: ${ckptName}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Checkpoint appears in multiple instances; pass --instance-id. Matches: ${matches.map((item) => item.instanceId).join(", ")}`);
+  }
+  return matches[0];
+}
+
+export async function publishCheckpoint(options) {
+  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const job = await resolveJob(outputDir, options);
+  const checkpoint = await resolveCheckpointPublishTarget(outputDir, job, options);
+  const body = {
+    name: options.name || defaultCheckpointModelName(job, checkpoint),
+    desc: options.desc ?? options.description ?? job.description ?? job.name ?? "",
+    ckpt: checkpoint.ckpt,
+  };
+  const endpoint = `/taskmanagement/api/v1/instances/external/${checkpoint.instanceId}/release_ckpt`;
+  const result = {
+    outputDir,
+    mode: options.execute ? "execute" : "dry-run",
+    job: {
+      jobId: job.jobId,
+      jobInternalId: job.jobInternalId,
+      name: job.name,
+      description: job.description,
+    },
+    instanceId: checkpoint.instanceId,
+    checkpoint,
+    alreadyPublished: checkpoint.status === true || checkpoint.status === "true",
+    publish: { endpoint, body },
+    response: null,
+    after: null,
+    verification: null,
+  };
+
+  if (!options.execute) return result;
+  if (!options.yes) throw new Error("--execute requires --yes");
+  if (result.alreadyPublished && !options.force) {
+    throw new Error("Checkpoint is already published according to cached all-checkpoints.csv; pass --force to publish it again.");
+  }
+  const cookieFile = required(options.cookieFile, "--execute requires --cookie-file");
+  const cookieHeader = extractCookieHeader(await readFile(cookieFile, "utf8"));
+  result.response = await fetchTaijiJson(cookieHeader, endpoint, { method: "POST", body });
+  const after = await fetchTaijiJson(cookieHeader, `/taskmanagement/api/v1/instances/external/${checkpoint.instanceId}/get_ckpt`);
+  const released = (after?.data ?? []).filter((item) => item.status === true);
+  const target = released.find((item) => item.ckpt === checkpoint.ckpt) ?? null;
+  result.after = { released, target };
+  result.verification = { released: Boolean(target) };
+  return result;
+}
+
 async function jobConfig(outputDir, job) {
   const configPath = trainFileLocalPath(outputDir, job.jobId, "config.yaml");
   if (await exists(configPath)) return parseYamlMapping(await readFile(configPath), "config.yaml");
@@ -809,6 +929,24 @@ async function main() {
       jobId: args.jobId,
       by: args.by,
     }), { ...args, json: args.json ?? true }, "ckpt-select.json");
+    return;
+  }
+  if (domain === "ckpt-publish") {
+    await writeResult(await publishCheckpoint({
+      outputDir: args.outputDir,
+      jobInternalId: args.jobInternalId ?? args.job,
+      jobId: args.jobId,
+      instanceId: args.instanceId ?? args.instance,
+      ckpt: args.ckpt,
+      by: args.by,
+      name: args.name,
+      desc: args.desc,
+      description: args.description,
+      cookieFile: args.cookieFile,
+      execute: args.execute,
+      yes: args.yes,
+      force: args.force,
+    }), { ...args, json: args.json ?? true }, "ckpt-publish.json");
     return;
   }
   if (domain === "config" && action === "diff-ref") {

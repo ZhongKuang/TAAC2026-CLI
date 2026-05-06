@@ -20,6 +20,7 @@ test("taac2026 CLI prints top-level command help", async () => {
   assert.match(stdout, /compare-runs/);
   assert.match(stdout, /logs/);
   assert.match(stdout, /ckpt-select/);
+  assert.match(stdout, /ckpt-publish/);
   assert.match(stdout, /ledger/);
 });
 
@@ -42,8 +43,10 @@ test("taac2026 CLI dispatches experiment helper commands", async () => {
   const { stdout: doctorHelp } = await execFileAsync(process.execPath, [cliPath, "submit", "doctor", "--help"], { cwd: toolDir });
   const { stdout: compareHelp } = await execFileAsync(process.execPath, [cliPath, "compare", "jobs", "--help"], { cwd: toolDir });
   const { stdout: compareRunsHelp } = await execFileAsync(process.execPath, [cliPath, "compare-runs", "--help"], { cwd: toolDir });
+  const { stdout: ckptPublishHelp } = await execFileAsync(process.execPath, [cliPath, "ckpt-publish", "--help"], { cwd: toolDir });
 
   assert.match(doctorHelp, /submit doctor/);
   assert.match(compareHelp, /compare jobs/);
   assert.match(compareRunsHelp, /compare-runs/);
+  assert.match(ckptPublishHelp, /ckpt-publish/);
 });

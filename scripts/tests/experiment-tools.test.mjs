@@ -11,6 +11,7 @@ import {
   diffConfigRef,
   doctorBundle,
   logsForJob,
+  publishCheckpoint,
   selectCheckpoint,
   syncLedger,
   verifyBundleAgainstJob,
@@ -234,4 +235,96 @@ test("ckpt-select pareto ignores train-only steps", async () => {
   assert(report.candidates.length > 0);
   assert(!report.candidates.some((candidate) => candidate.step === 3));
   assert(report.candidates.every((candidate) => Number.isFinite(candidate.metrics["AUC/valid"])));
+});
+
+test("ckpt-publish dry-run builds a safe release plan from cached evidence", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "taac2026-ckpt-publish-"));
+  const { outputDir } = await makeTaijiOutput(tempRoot);
+
+  const report = await publishCheckpoint({
+    outputDir,
+    jobInternalId: "56242",
+    ckpt: "global_step1.epoch=1.AUC=0.860000.Logloss=0.280000.best_model",
+  });
+
+  assert.equal(report.mode, "dry-run");
+  assert.equal(report.publish.endpoint, "/taskmanagement/api/v1/instances/external/instance_a/release_ckpt");
+  assert.equal(report.publish.body.name, "v1 test 0.816577 epoch1 val auc 0.860000");
+  assert.equal(report.publish.body.desc, "bucket 32\nsecond line");
+  assert.equal(report.publish.body.ckpt, "global_step1.epoch=1.AUC=0.860000.Logloss=0.280000.best_model");
+  assert.equal(report.checkpoint.status, "false");
+  assert.equal(report.response, null);
+});
+
+test("ckpt-publish execute calls release_ckpt and verifies target status", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "taac2026-ckpt-publish-live-"));
+  const { outputDir } = await makeTaijiOutput(tempRoot);
+  const cookieFile = path.join(tempRoot, "cookie.txt");
+  await writeFile(cookieFile, "cookie: a=b");
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    if (String(url).endsWith("/release_ckpt")) {
+      assert.equal(init.method, "POST");
+      assert.equal(init.headers.cookie, "a=b");
+      assert.deepEqual(JSON.parse(init.body), {
+        name: "v1 test 0.816577 epoch1 val auc 0.860000",
+        desc: "bucket 32\nsecond line",
+        ckpt: "global_step1.epoch=1.AUC=0.860000.Logloss=0.280000.best_model",
+      });
+      return new Response(JSON.stringify({ error: { code: "SUCCESS", message: "", cause: "" }, data: null }), { status: 200 });
+    }
+    if (String(url).endsWith("/get_ckpt")) {
+      return new Response(JSON.stringify({
+        error: { code: "SUCCESS", message: "", cause: "" },
+        data: [{ ckpt: "global_step1.epoch=1.AUC=0.860000.Logloss=0.280000.best_model", status: true }],
+      }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+
+  try {
+    const report = await publishCheckpoint({
+      outputDir,
+      jobInternalId: "56242",
+      ckpt: "global_step1.epoch=1.AUC=0.860000.Logloss=0.280000.best_model",
+      cookieFile,
+      execute: true,
+      yes: true,
+    });
+
+    assert.equal(report.mode, "execute");
+    assert.equal(report.verification.released, true);
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("ckpt-publish execute refuses an already published checkpoint unless forced", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "taac2026-ckpt-publish-duplicate-"));
+  const { outputDir } = await makeTaijiOutput(tempRoot);
+  const cookieFile = path.join(tempRoot, "cookie.txt");
+  await writeFile(cookieFile, "cookie: a=b");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("fetch should not be called");
+  };
+
+  try {
+    await assert.rejects(
+      publishCheckpoint({
+        outputDir,
+        jobInternalId: "56242",
+        ckpt: "global_step2.epoch=2.AUC=0.865000.Logloss=0.270000.best_model",
+        cookieFile,
+        execute: true,
+        yes: true,
+      }),
+      /already published/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

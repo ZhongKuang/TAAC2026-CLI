@@ -38,6 +38,10 @@ const commands = {
     script: "scripts/experiment-tools.mjs",
     description: "Select checkpoint candidates by explicit metric rules.",
   },
+  "ckpt-publish": {
+    script: "scripts/experiment-tools.mjs",
+    description: "Publish a cached training checkpoint as a Taiji model.",
+  },
   config: {
     script: "scripts/experiment-tools.mjs",
     description: "Compare config.yaml against an explicit Job reference.",
@@ -72,6 +76,7 @@ Examples:
   taac2026 compare jobs 56242 58244
   taac2026 compare-runs --base 58244 --exp 56242
   taac2026 ckpt-select --job 56242 --by valid_auc
+  taac2026 ckpt-publish --job 56242 --ckpt <ckpt-name>
 
 Run 'taac2026 <command> --help' for command-specific options.`;
 }
@@ -94,7 +99,7 @@ function run() {
   const routedArgs =
     commandName === "submit" && submitHelperActions.has(args[0])
       ? ["submit", ...args]
-      : ["compare", "compare-runs", "logs", "ckpt-select", "config", "ledger", "diagnose"].includes(commandName)
+      : ["compare", "compare-runs", "logs", "ckpt-select", "ckpt-publish", "config", "ledger", "diagnose"].includes(commandName)
         ? [commandName, ...args]
         : args;
 

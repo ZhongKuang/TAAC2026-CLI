@@ -74,6 +74,7 @@ taac2026 ledger sync
 taac2026 logs --job <JOB_INTERNAL_ID> --errors --tail 100 --json
 taac2026 diagnose job --job-internal-id <JOB_INTERNAL_ID> --json
 taac2026 ckpt-select --job <JOB_INTERNAL_ID> --by valid_auc --json
+taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json
 ```
 
 Use these commands to collect evidence and catch mistakes; do not present them as automatic experiment decision makers.
@@ -189,6 +190,42 @@ Use `config diff-ref` only against an explicit reference Job. Do not infer "high
 Use `ledger sync` to persist structured experiment history under `taiji-output/ledger/experiments.json`, `logs --errors` for quick error/tail extraction, and `diagnose job` to collect errors, log tails, and resolved configs for debugging.
 
 Use `ckpt-select` only with an explicit rule such as `--by valid_auc`, `--by valid_test_like_auc`, `--by logloss`, or `--by pareto`. Present the result as a candidate selected by that rule, not as a final recommendation.
+
+## Checkpoint Publish Workflow
+
+Use `ckpt-publish` to publish one scraped training checkpoint as a Taiji model. It reads `jobs-summary.csv` and `all-checkpoints.csv`, so run a targeted scrape first when the checkpoint is new:
+
+```bash
+taac2026 scrape --all --job-internal-id <JOB_INTERNAL_ID> --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json
+```
+
+Dry-run is the default. It builds the release plan but does not call Taiji. The default model name is `<Job Name> epoch<N> val auc <AUC>`, parsed from the checkpoint filename. The default model description is the Job description from `jobs-summary.csv`.
+
+Live publishing requires explicit confirmation:
+
+```bash
+taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+```
+
+The captured endpoint is `POST /taskmanagement/api/v1/instances/external/<instanceId>/release_ckpt` with JSON body `{ name, desc, ckpt }`. After publishing, the command reads `get_ckpt` and verifies that the target checkpoint has `status: true`. Do not assume it is the only published checkpoint; observed responses can contain multiple `status: true` checkpoints. If cached `all-checkpoints.csv` already marks the target as published, live publishing is blocked unless `--force` is passed, to avoid accidental duplicate models.
+
+## Model And Evaluation Gaps
+
+Current captured model/evaluation endpoints:
+
+- Model list: `GET /aide/api/external/mould/?page=1&page_size=20&search=`.
+- Evaluation template files: `GET /aide/api/evaluation_tasks/get_template/`.
+- Evaluation create: `POST /aide/api/evaluation_tasks/` with `{ mould_id, name, image_name, creator, files }`; observed create moves from `pending` to `infer_wait_resource`.
+- Evaluation list/status/score: `GET /aide/api/evaluation_tasks/?page=1&page_size=20`.
+- Evaluation stop: `POST /aide/api/evaluation_tasks/stop_task/` with `{ task_id }`.
+
+Still needed before implementing full publish-to-evaluate automation:
+
+- HAR for `/model` page load if model search/filter/detail/delete/rename behavior matters beyond the model list endpoint.
+- HAR for creating an evaluation with locally uploaded inference files, including any COS upload path and whether it reuses `/aide/api/evaluation_tasks/get_federation_token/`.
+- HAR for selecting a newly published model in evaluation when the model list is searched or paginated.
+- HAR for evaluation detail/log/download-result pages if the list response is not enough for debugging failed evaluations.
 
 ## Implementation Notes
 

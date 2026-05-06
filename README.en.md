@@ -85,7 +85,7 @@ Most importantly, metrics should be compared by an agent across runs, not by hum
 | Prepare submit bundle | `taiji-output/submit-bundle/` |
 | Dry-run / live submit | `taiji-output/submit-live/<timestamp>/` |
 | Submit safety / read-back verification | `submit doctor`, `submit verify` |
-| Experiment evidence tools | `compare jobs`, `compare-runs`, `config diff-ref`, `ledger sync`, `logs`, `diagnose job`, `ckpt-select` |
+| Experiment evidence tools | `compare jobs`, `compare-runs`, `config diff-ref`, `ledger sync`, `logs`, `diagnose job`, `ckpt-select`, `ckpt-publish` |
 
 ## Quick Start
 
@@ -175,6 +175,13 @@ Extract error logs quickly, or list checkpoint candidates by an explicit metric 
 ```bash
 taac2026 logs --job 60414 --errors --tail 100 --json
 taac2026 ckpt-select --job 56242 --by valid_auc --json
+```
+
+Publish one training checkpoint as a model. Dry-run is the default; live publishing requires explicit `--execute --yes`. The default model name is `<Job Name> epoch<N> val auc <AUC>`, and the description reuses the Job Description. If cached `all-checkpoints.csv` already marks the checkpoint as published, live publishing is blocked unless `--force` is passed, to avoid duplicate models.
+
+```bash
+taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --json
+taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
 ```
 
 ## Submit Training
@@ -367,7 +374,7 @@ Poor fits:
 | `scripts/compare-config-yaml.mjs` | Semantically compare two YAML configs |
 | `scripts/prepare-taiji-submit.mjs` | Prepare a local submit bundle and record Git state |
 | `scripts/submit-taiji.mjs` | Dry-run or explicitly execute upload, Job creation, and Run |
-| `scripts/experiment-tools.mjs` | Submit doctor, submit verify, Job comparison, ledger sync, and log diagnosis |
+| `scripts/experiment-tools.mjs` | Submit doctor, submit verify, Job comparison, ledger sync, log diagnosis, checkpoint selection, and checkpoint publishing |
 
 ## Troubleshooting
 
