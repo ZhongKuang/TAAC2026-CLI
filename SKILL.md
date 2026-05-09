@@ -51,6 +51,8 @@ Default order is targeted > incremental > full.
 
 ## Output Discipline
 
+- Before running commands, inspect the existing output layout when `outputs/taiji-output/` already exists. The expected buckets are `training/`, `evaluation/`, `submit/`, `reports/`, and `secrets/`. If the directory is flat, mixed, or otherwise inconsistent with this layout, tell the user it is worth normalizing first so future CLI output stays aligned with the repository. If the user agrees, move existing artifacts into the matching buckets before continuing.
+- If the user does not want to reorganize existing outputs, do not assume the canonical layout. Read the real structure with tools such as `find outputs/taiji-output -maxdepth 2 -type f -o -type d`, locate `jobs.json`, metrics CSVs, logs, code downloads, evaluation tasks, bundles, and reports, then pass explicit `--output-dir`, `--out-dir`, or `--bundle` paths that match the actual files.
 - For machine-readable reports, prefer `--json --out <name>.json` or plain `--out <name>.json`; avoid printing large JSON to stdout.
 - Relative `--out` report names are written under `outputs/taiji-output/reports/<type>/` or the command-specific output folder. `eval scrape --out-dir` is different: it is an explicit directory path; use `--out-dir outputs/taiji-output/evaluation/evaluations-<name>` when you want a custom evaluation folder.
 - Reply with summaries: `syncStats`, Job IDs, Eval task IDs, key metrics, error snippets, and file paths.
