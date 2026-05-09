@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
-const DEFAULT_OUT_DIR = "taiji-output/config-diffs";
+const DEFAULT_OUT_ROOT = "outputs/taiji-output/reports";
+const DEFAULT_OUT_DIR = `${DEFAULT_OUT_ROOT}/config-diffs`;
 
 function parseArgs(argv) {
   const args = {
@@ -20,7 +21,7 @@ function parseArgs(argv) {
   }
 
   if (files.length !== 2) {
-    throw new Error("Usage: taac2026 diff-config <old-config.yaml> <new-config.yaml> [--json] [--out diff.json]. Relative --out paths are written under taiji-output/.");
+    throw new Error("Usage: taac2026 diff-config <old-config.yaml> <new-config.yaml> [--json] [--out diff.json]. Relative --out paths are written under outputs/taiji-output/.");
   }
 
   return { ...args, oldFile: files[0], newFile: files[1] };
@@ -28,16 +29,18 @@ function parseArgs(argv) {
 
 function assertSafeRelativeOutputPath(outPath) {
   if (!path.isAbsolute(outPath) && String(outPath).split(/[\\/]+/).includes("..")) {
-    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside taiji-output.");
+    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside outputs/taiji-output.");
   }
 }
 
 export function resolveTaijiOutputFile(outPath) {
   assertSafeRelativeOutputPath(outPath);
   if (path.isAbsolute(outPath)) return outPath;
-  if (outPath.split(/[\\/]/)[0] === "taiji-output") return path.resolve(outPath);
+  const parts = outPath.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(outPath);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
   if (path.dirname(outPath) === ".") return path.resolve(DEFAULT_OUT_DIR, outPath);
-  return path.resolve("taiji-output", outPath);
+  return path.resolve(DEFAULT_OUT_ROOT, outPath);
 }
 
 function formatPath(parts) {

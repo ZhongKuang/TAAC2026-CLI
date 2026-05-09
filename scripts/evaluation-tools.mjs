@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const COS = require("cos-nodejs-sdk-v5");
 
-const DEFAULT_OUT_ROOT = "taiji-output";
+const DEFAULT_OUT_ROOT = "outputs/taiji-output/evaluation";
+const DEFAULT_REPORT_ROOT = "outputs/taiji-output/reports";
+const DEFAULT_SUBMITS_ROOT = "outputs/submit";
 const TAIJI_ORIGIN = "https://taiji.algo.qq.com";
 const BUCKET = "hunyuan-external-1258344706";
 const REGION = "ap-guangzhou";
@@ -18,14 +20,14 @@ function usage() {
   return `Usage:
   taac2026 model list --cookie-file <file> [--search <text>] [--json] [--out <file>]
   taac2026 eval create (--model-id <id> --creator <ams_id> | --model-name <name> --cookie-file <file>) (--submit-name <name> | --file-dir <dir>) [--name <eval-name>] [--execute --yes]
-  taac2026 eval scrape (--all | --task-id <id[,id...]>) --cookie-file <file> [--logs] [--code] [--out-dir taiji-output/evaluations]
+  taac2026 eval scrape (--all | --task-id <id[,id...]>) --cookie-file <file> [--logs] [--code] [--out-dir outputs/taiji-output/evaluation/evaluations]
   taac2026 eval list --cookie-file <file> [--page <n>] [--page-size <n>]
   taac2026 eval stop --task-id <id> --cookie-file <file> [--execute --yes]
 
 Dry-run is the default for create and stop. Live create uploads local inference files and creates one evaluation task.
 By default --file-dir includes only dataset.py, dense_transform.py, eda.py, infer.py, and model.py when present.
---submit-name resolves submits/*/<name>/inference_code and uploads all direct files in that curated package directory.
-eval scrape writes score summaries, optional event logs, and optional inference files under taiji-output/evaluations/.`;
+--submit-name resolves outputs/submit/*/<name>/inference_code and uploads all direct files in that curated package directory.
+eval scrape writes score summaries, optional event logs, and optional inference files under outputs/taiji-output/evaluation/evaluations/.`;
 }
 
 function parseArgs(argv) {
@@ -59,20 +61,27 @@ function required(value, message) {
 
 function assertSafeRelativeOutputPath(outPath) {
   if (!path.isAbsolute(outPath) && String(outPath).split(/[\\/]+/).includes("..")) {
-    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside taiji-output.");
+    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside outputs/taiji-output.");
   }
 }
 
 function resolveOutputPath(outPath, defaultSubdir) {
   assertSafeRelativeOutputPath(outPath);
   if (path.isAbsolute(outPath)) return outPath;
-  if (outPath.split(/[\\/]/)[0] === DEFAULT_OUT_ROOT) return path.resolve(outPath);
-  return path.resolve(DEFAULT_OUT_ROOT, defaultSubdir, outPath);
+  const parts = outPath.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(outPath);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
+  const scopedDir = defaultSubdir && defaultSubdir !== "reports" ? [defaultSubdir] : [];
+  return path.resolve(DEFAULT_REPORT_ROOT, ...scopedDir, outPath);
 }
 
 function resolveEvaluationsOutputDir(outDir) {
   const target = outDir ?? path.join(DEFAULT_OUT_ROOT, "evaluations");
   assertSafeRelativeOutputPath(target);
+  const parts = String(target).split(/[\\/]+/);
+  if (!path.isAbsolute(target) && parts[0] === "taiji-output") {
+    return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
+  }
   return path.resolve(target);
 }
 
@@ -163,7 +172,7 @@ async function directFilesFromDir(fileDir, options = {}) {
 }
 
 async function findInferenceCodeDirs(submitsRoot) {
-  const root = path.resolve(submitsRoot ?? "submits");
+  const root = path.resolve(submitsRoot ?? DEFAULT_SUBMITS_ROOT);
   const matches = [];
 
   async function walk(dir, depth) {
@@ -681,7 +690,8 @@ export async function stopEvaluation(options) {
 
 async function writeResult(result, args, defaultName) {
   if (args.out) {
-    const outPath = resolveOutputPath(args.out, "reports");
+    const defaultSubdir = defaultName.startsWith("model-") ? "model" : "evaluation";
+    const outPath = resolveOutputPath(args.out, defaultSubdir);
     await mkdir(path.dirname(outPath), { recursive: true });
     await writeFile(outPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
     console.log(`Wrote ${outPath}`);

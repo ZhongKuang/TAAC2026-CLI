@@ -4,7 +4,7 @@
 
 Turn the Taiji / TAAC training and evaluation platform into an experiment CLI that humans and agents can read, compare, archive, submit, run, publish models from, and collect online evaluation evidence from.
 
-TAAC2026 CLI targets `https://taiji.algo.qq.com/training`, `/model`, and `/evaluation`. It can scrape training jobs, metrics, logs, checkpoints, and training code; compare two `config.yaml` files semantically; publish checkpoints as models; create, stop, and scrape evaluation tasks; and prepare or explicitly execute the captured Taiji submit workflow. All local artifacts default to `taiji-output/`, keeping your repository root clean.
+TAAC2026 CLI targets `https://taiji.algo.qq.com/training`, `/model`, and `/evaluation`. It can scrape training jobs, metrics, logs, checkpoints, and training code; compare two `config.yaml` files semantically; publish checkpoints as models; create, stop, and scrape evaluation tasks; and prepare or explicitly execute the captured Taiji submit workflow. All local artifacts default to `outputs/taiji-output/`, keeping your repository root clean.
 
 `SKILL.md` is a universal agent runbook. Codex, Claude Code, OpenAI Agents SDK, Cursor, Aider, or any agent that can read repository files and run shell commands can use this CLI.
 
@@ -37,7 +37,7 @@ Then run:
 taac2026 --help
 ```
 
-If this tool is already bundled inside your project, run `npm install` from `.codex/skills/taiji-metrics-scraper/`, or call `node .codex/skills/taiji-metrics-scraper/bin/taac2026.mjs ...` from the repository root.
+If this tool is already bundled inside your project, run `npm install` from `.codex/skills/taac2026-cli/`, or call `node .codex/skills/taac2026-cli/bin/taac2026.mjs ...` from the repository root.
 
 ## The Pain: Training Platforms Should Not Own Your Working Memory
 
@@ -61,7 +61,7 @@ Most importantly, metrics should be compared by an agent across runs, not by hum
 | Submits can silently use the wrong zip / config / run.sh / title / description | `prepare-taiji-submit.mjs` creates a manifest with Job Name, Description, Git HEAD, dirty state, and exact upload files. |
 | Automation is useful but accidental training starts are expensive | `submit-taiji.mjs` is dry-run by default; live creation requires `--execute --yes`, and start requires `--run`. |
 | Online evaluation scores, infer code, and failure logs are stuck in the web UI | `eval scrape` archives evaluation tasks, online AUC, event logs, and inference code together. |
-| Tool artifacts clutter the repository root | All local artifacts default to `taiji-output/`, including browser profile, scrape output, bundles, live results, and config diffs. |
+| Tool artifacts clutter the repository root | All local artifacts default to `outputs/taiji-output/`, including browser profile, scrape output, bundles, live results, and config diffs. |
 
 ## What Agents Can Do With It
 
@@ -94,7 +94,7 @@ These commands are meant to collect evidence, reduce manual mistakes, and connec
 | `ckpt-select` | Lists checkpoint candidates by explicit rules such as `valid_auc` or pareto. | Find checkpoint candidates without manually scanning curves. |
 | `ckpt-publish` | Publishes a training checkpoint as a Taiji model; dry-run by default. | Bridge training output into model management. |
 | `model list` | Lists published models with optional search. | Resolve the model ID and source Job for evaluation. |
-| `eval create` | Creates evaluation tasks; supports `--submit-name` to upload local `submits/*/<name>/inference_code`. | Connect "publish model -> submit infer -> create evaluation". |
+| `eval create` | Creates evaluation tasks; supports `--submit-name` to upload local `outputs/submit/*/<name>/inference_code`. | Connect "publish model -> submit infer -> create evaluation". |
 | `eval list` | Lists evaluation status and scores. | Track whether inference succeeded and whether AUC is available. |
 | `eval scrape` | Pages through evaluation tasks and optionally downloads event logs and inference code files. | Pull online test AUC, inference code, and failure/EDA logs into a local evidence bundle. |
 | `eval stop` | Stops an evaluation task; dry-run by default. | Stop mistaken or resource-wasting evaluations. |
@@ -105,50 +105,50 @@ These commands are meant to collect evidence, reduce manual mistakes, and connec
 
 | Artifact | Contains |
 | --- | --- |
-| `taiji-output/jobs.json` | Complete raw and normalized Job / instance / metric / code metadata. |
-| `taiji-output/jobs-summary.csv` | One row per Job for quick grep, sorting, and human browsing. |
-| `taiji-output/all-metrics-long.csv` | Long-form metrics keyed by `jobId + instanceId + metric + step`. |
-| `taiji-output/all-checkpoints.csv` | Checkpoint names, metrics, publish status, and source instances. |
-| `taiji-output/logs/<jobId>/<instanceId>.txt` | Pod log text. |
-| `taiji-output/code/<jobId>/files/...` | Downloaded platform trainFiles. |
-| `taiji-output/code/<jobId>/job-detail.json` | Raw Job detail response and trainFiles metadata. |
-| `taiji-output/config-diffs/` | Semantic config diff output. |
-| `taiji-output/submit-bundle/` | Prepared local submit bundle and manifest. |
-| `taiji-output/submit-live/<timestamp>/` | Live submit / run plans and responses. |
-| `taiji-output/evaluations/` | Evaluation task summaries, online scores, event logs, and inference code files. |
-| `taiji-output/reports/` | JSON / Markdown reports from compare, diagnose, model, and eval commands. |
-| `taiji-output/secrets/` | Recommended location for cookies or headers. Never commit it. |
+| `outputs/taiji-output/training/jobs.json` | Complete raw and normalized Job / instance / metric / code metadata. |
+| `outputs/taiji-output/training/jobs-summary.csv` | One row per Job for quick grep, sorting, and human browsing. |
+| `outputs/taiji-output/training/all-metrics-long.csv` | Long-form metrics keyed by `jobId + instanceId + metric + step`. |
+| `outputs/taiji-output/training/all-checkpoints.csv` | Checkpoint names, metrics, publish status, and source instances. |
+| `outputs/taiji-output/training/logs/<jobId>/<instanceId>.txt` | Pod log text. |
+| `outputs/taiji-output/training/code/<jobId>/files/...` | Downloaded platform trainFiles. |
+| `outputs/taiji-output/training/code/<jobId>/job-detail.json` | Raw Job detail response and trainFiles metadata. |
+| `outputs/taiji-output/reports/config-diffs/` | Semantic config diff output. |
+| `outputs/taiji-output/submit/bundle/` | Prepared local submit bundle and manifest. |
+| `outputs/taiji-output/submit/live/<timestamp>/` | Live submit / run plans and responses. |
+| `outputs/taiji-output/evaluation/evaluations/` | Evaluation task summaries, online scores, event logs, and inference code files. |
+| `outputs/taiji-output/reports/` | JSON / Markdown reports from compare, diagnose, model, and eval commands. |
+| `outputs/taiji-output/secrets/` | Recommended location for cookies or headers. Never commit it. |
 
 ## Quick Start
 
 Save a valid Cookie from a logged-in browser request to:
 
 ```text
-taiji-output/secrets/taiji-cookie.txt
+outputs/taiji-output/secrets/taiji-cookie.txt
 ```
 
 Scrape all training jobs:
 
 ```bash
-taac2026 scrape --all --cookie-file taiji-output/secrets/taiji-cookie.txt --headless
+taac2026 scrape --all --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --headless
 ```
 
 Incremental sync still scans the full Job list, but skips detail, code, instance, metric, and log fetches for cached terminal Jobs whose `updateTime/status/jzStatus` are unchanged:
 
 ```bash
-taac2026 scrape --all --incremental --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 scrape --all --incremental --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct
 ```
 
 To inspect one Job's detail, code files, and metrics, target the internal Taiji ID:
 
 ```bash
-taac2026 scrape --all --job-internal-id 56242 --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 scrape --all --job-internal-id 56242 --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct
 ```
 
 Use direct backend mode when Chromium is unreliable on a server:
 
 ```bash
-taac2026 scrape --all --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 scrape --all --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct
 ```
 
 Compare two configs:
@@ -158,7 +158,7 @@ taac2026 diff-config old-config.yaml new-config.yaml
 taac2026 diff-config old-config.yaml new-config.yaml --json --out diff.json
 ```
 
-`--out diff.json` writes to `taiji-output/config-diffs/diff.json`, not the repository root.
+`--out diff.json` writes to `outputs/taiji-output/reports/config-diffs/diff.json`, not the repository root.
 
 ## Daily Experiment Tools
 
@@ -167,14 +167,14 @@ These commands organize evidence and catch avoidable mistakes. They do not decid
 Check a prepared bundle before submit:
 
 ```bash
-taac2026 submit doctor --bundle taiji-output/submit-bundle
+taac2026 submit doctor --bundle outputs/taiji-output/submit/bundle
 ```
 
 After submit, scrape the new Job and verify the platform-side `code.zip/config.yaml/run.sh` against the local bundle:
 
 ```bash
-taac2026 scrape --all --job-internal-id 56242 --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
-taac2026 submit verify --bundle taiji-output/submit-bundle --job-internal-id 56242
+taac2026 scrape --all --job-internal-id 56242 --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 submit verify --bundle outputs/taiji-output/submit/bundle --job-internal-id 56242
 ```
 
 Compare multiple Jobs as an evidence table with metrics, manually recorded test scores, and curve summaries:
@@ -215,25 +215,25 @@ Publish one training checkpoint as a model. Dry-run is the default; live publish
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --json
 taac2026 ckpt-publish --job 56242 --by valid_auc --json
 taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --instance-id 95cdb4769de33483019df8ac5f843305 --json
-taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json
+taac2026 ckpt-publish --job 56242 --ckpt "global_step7236.epoch=4.AUC=0.865213.Logloss=0.273911.best_model" --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --execute --yes --json
 ```
 
-List published models, create evaluations, or stop evaluations. `eval create` is dry-run by default. Prefer `--submit-name` so the CLI resolves the prepared inference package under `submits/<date>/<submit-name>/inference_code` and uploads every direct file from that curated directory. `--file-dir` is the manual fallback; by default it includes only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` files, so a repository root is not uploaded accidentally. Live creation requires explicit `--execute --yes`.
+List published models, create evaluations, or stop evaluations. `eval create` is dry-run by default. Prefer `--submit-name` so the CLI resolves the prepared inference package under `outputs/submit/<date>/<submit-name>/inference_code` and uploads every direct file from that curated directory. `--file-dir` is the manual fallback; by default it includes only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` files, so a repository root is not uploaded accidentally. Live creation requires explicit `--execute --yes`.
 
 ```bash
-taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "V1.4.6" --out model-list.json
+taac2026 model list --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --search "V1.4.6" --out model-list.json
 taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --out eval-create.json
-taac2026 eval create --model-name "1.4.6 epoch" --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json
-taac2026 eval create --model-search "1.4.6" --submits-root ./submits --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json
-taac2026 eval list --cookie-file taiji-output/secrets/taiji-cookie.txt --page-size 20 --out eval-list.json
-taac2026 eval scrape --task-id 62726 --logs --code --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json
-taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-create-live.json
-taac2026 eval stop --task-id 62362 --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-stop-live.json
+taac2026 eval create --model-name "1.4.6 epoch" --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-create.json
+taac2026 eval create --model-search "1.4.6" --submits-root ./outputs/submit --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-create.json
+taac2026 eval list --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --page-size 20 --out eval-list.json
+taac2026 eval scrape --task-id 62726 --logs --code --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json
+taac2026 eval create --model-id 29132 --creator ams_2026_1029735554728157691 --submit-name V1.4.6_fusion_time_item_dense_main7683bde --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-create-live.json
+taac2026 eval stop --task-id 62362 --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-stop-live.json
 ```
 
-`eval create` also supports lower-frequency options such as `--image-name` and `--include-all-files`; `--include-all-files` uploads every direct file in the directory, so confirm it explicitly before use. `model list` and `eval create/list/stop` print JSON by default; with `--out xxx.json`, they write to `taiji-output/reports/xxx.json`.
+`eval create` also supports lower-frequency options such as `--image-name` and `--include-all-files`; `--include-all-files` uploads every direct file in the directory, so confirm it explicitly before use. `model list` and `eval create/list/stop` print JSON by default; with `--out xxx.json`, they write by type under `outputs/taiji-output/reports/model/` or `outputs/taiji-output/reports/evaluation/`.
 
-`eval scrape` writes `taiji-output/evaluations/eval-summary.csv`, `eval-tasks.json`, `logs/<evalTaskId>.txt`, and `code/<evalTaskId>/files/...`. It only collects evidence; it does not create or start evaluation tasks. `--out-dir` is an explicit output directory: the default is `taiji-output/evaluations/`; `--out-dir foo` writes to `./foo`, not `taiji-output/foo`. Prefer `--out-dir taiji-output/evaluations-<name>` for custom folders.
+`eval scrape` writes `outputs/taiji-output/evaluation/evaluations/eval-summary.csv`, `eval-tasks.json`, `logs/<evalTaskId>.txt`, and `code/<evalTaskId>/files/...`. It only collects evidence; it does not create or start evaluation tasks. `--out-dir` is an explicit output directory: the default is `outputs/taiji-output/evaluation/evaluations/`; `--out-dir foo` writes to `./foo`, not `outputs/taiji-output/foo`. Prefer `--out-dir outputs/taiji-output/evaluation/evaluations-<name>` for custom folders.
 
 ## Submit Training
 
@@ -293,9 +293,9 @@ You can also list files one by one:
 ```bash
 taac2026 prepare-submit \
   --template-job-url "https://taiji.algo.qq.com/training/..." \
-  --zip "./submits/0505/V1.4.0/code.zip" \
-  --config "./submits/0505/V1.4.0/config.yaml" \
-  --run-sh "./submits/0505/V1.4.0/run.sh" \
+  --zip "./outputs/submit/0505/V1.4.0/code.zip" \
+  --config "./outputs/submit/0505/V1.4.0/config.yaml" \
+  --run-sh "./outputs/submit/0505/V1.4.0/run.sh" \
   --file "./main.py" \
   --file "./local_dataset.py=dataset.py" \
   --name "v1.4.0_mixed_files"
@@ -308,9 +308,9 @@ Prepare a submit bundle:
 ```bash
 taac2026 prepare-submit \
   --template-job-url "https://taiji.algo.qq.com/training/..." \
-  --zip "./submits/0505/V1.4.0/code.zip" \
-  --config "./submits/0505/V1.4.0/config.yaml" \
-  --run-sh "./submits/0505/V1.4.0/run.sh" \
+  --zip "./outputs/submit/0505/V1.4.0/code.zip" \
+  --config "./outputs/submit/0505/V1.4.0/config.yaml" \
+  --run-sh "./outputs/submit/0505/V1.4.0/run.sh" \
   --name "v1.4.0_item_reinit" \
   --description "item id reinit + dense transform" \
   --run
@@ -321,7 +321,7 @@ Omit `--run-sh` to keep the template Job's existing `run.sh`.
 It writes:
 
 ```text
-taiji-output/submit-bundle/
+outputs/taiji-output/submit/bundle/
   manifest.json
   NEXT_STEPS.md
   files/code.zip
@@ -334,8 +334,8 @@ Generate a dry-run submit plan:
 
 ```bash
 taac2026 submit \
-  --bundle taiji-output/submit-bundle \
-  --cookie-file taiji-output/secrets/taiji-cookie.txt \
+  --bundle outputs/taiji-output/submit/bundle \
+  --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt \
   --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID>
 ```
 
@@ -343,8 +343,8 @@ Upload and create a Job:
 
 ```bash
 taac2026 submit \
-  --bundle taiji-output/submit-bundle \
-  --cookie-file taiji-output/secrets/taiji-cookie.txt \
+  --bundle outputs/taiji-output/submit/bundle \
+  --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt \
   --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID> \
   --execute --yes
 ```
@@ -353,8 +353,8 @@ Upload, create, and start training:
 
 ```bash
 taac2026 submit \
-  --bundle taiji-output/submit-bundle \
-  --cookie-file taiji-output/secrets/taiji-cookie.txt \
+  --bundle outputs/taiji-output/submit/bundle \
+  --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt \
   --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID> \
   --execute --yes --run
 ```
@@ -369,10 +369,10 @@ taac2026 submit ... --execute --yes --allow-add-file
 
 ## Safety Defaults
 
-- Put cookies, HAR files, and captured headers under `taiji-output/secrets/` or `taiji-output/har/`. Never commit them.
-- All scripts write local artifacts under `taiji-output/` by default.
-- Relative output paths cannot contain `..`; use an absolute path when writing outside `taiji-output/` is intentional.
-- `eval scrape --out-dir` is an explicit directory option; the default is `taiji-output/evaluations/`, and custom folders should usually still live under `taiji-output/`.
+- Put cookies and captured headers under `outputs/taiji-output/secrets/`; keep HAR files and analysis evidence under `outputs/taiji-output/reports/`. Never commit them.
+- All scripts write local artifacts by type under `outputs/taiji-output/training/`, `evaluation/`, `submit/`, or `reports/` by default.
+- Relative output paths cannot contain `..`; use an absolute path when writing outside `outputs/taiji-output/` is intentional.
+- `eval scrape --out-dir` is an explicit directory option; the default is `outputs/taiji-output/evaluation/evaluations/`, and custom folders should usually still live under `outputs/taiji-output/evaluation/`.
 - `submit-taiji.mjs` is dry-run by default.
 - Platform mutations require explicit `--execute --yes`.
 - Starting training additionally requires explicit `--run`.
@@ -382,32 +382,46 @@ taac2026 submit ... --execute --yes --allow-add-file
 ## Output Layout
 
 ```text
-taiji-output/
-  jobs.json
-  jobs-summary.csv
-  all-checkpoints.csv
-  all-metrics-long.csv
-  browser-profile/
-  code/<jobId>/
-  config-diffs/
-  evaluations/
-    eval-summary.csv
-    eval-tasks.json
-    code/<evalTaskId>/
-    logs/<evalTaskId>.txt
-  ledger/
-    experiments.json
-  logs/<jobId>/
+outputs/taiji-output/
+  training/
+    jobs.json
+    jobs-summary.csv
+    all-checkpoints.csv
+    all-metrics-long.csv
+    browser-profile/
+    code/<jobId>/
+    logs/<jobId>/
+  evaluation/
+    evaluations/
+      eval-summary.csv
+      eval-tasks.json
+      code/<evalTaskId>/
+      logs/<evalTaskId>.txt
+  submit/
+    bundle/
+    bundles/
+    live/<timestamp>/
+    local/
+    notes/
+    runs/
   reports/
+    checkpoint/
+    compare/
+    config-diffs/
+    diagnose/
+    evaluation/
+    ledger/experiments.json
+    logs/
+    model/
+    smoke/
+    submit/
   secrets/
-  submit-bundle/
-  submit-live/<timestamp>/
 ```
 
 Recommended `.gitignore` entry:
 
 ```gitignore
-taiji-output/
+outputs/taiji-output/
 ```
 
 ## When To Use It

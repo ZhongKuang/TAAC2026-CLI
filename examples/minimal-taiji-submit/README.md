@@ -31,13 +31,13 @@ rely on an old template entrypoint.
 Example packaging command:
 
 ```bash
-mkdir -p taiji-output/example-submit
+mkdir -p outputs/taiji-output/example-submit
 python3 - <<'PY'
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
 source = Path("examples/minimal-taiji-submit/code")
-target = Path("taiji-output/example-submit/code.zip")
+target = Path("outputs/taiji-output/example-submit/code.zip")
 target.parent.mkdir(parents=True, exist_ok=True)
 
 with ZipFile(target, "w", ZIP_DEFLATED) as archive:
@@ -45,7 +45,7 @@ with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         if path.is_file():
             archive.write(path, path.relative_to(source))
 PY
-cp examples/minimal-taiji-submit/config.yaml taiji-output/example-submit/config.yaml
+cp examples/minimal-taiji-submit/config.yaml outputs/taiji-output/example-submit/config.yaml
 ```
 
 Then prepare a submit bundle:
@@ -53,8 +53,8 @@ Then prepare a submit bundle:
 ```bash
 taac2026 prepare-submit \
   --template-job-url "https://taiji.algo.qq.com/training/..." \
-  --zip taiji-output/example-submit/code.zip \
-  --config taiji-output/example-submit/config.yaml \
+  --zip outputs/taiji-output/example-submit/code.zip \
+  --config outputs/taiji-output/example-submit/config.yaml \
   --name "minimal_example"
 ```
 
@@ -63,8 +63,8 @@ Optional entrypoint override:
 ```bash
 taac2026 prepare-submit \
   --template-job-url "https://taiji.algo.qq.com/training/..." \
-  --zip taiji-output/example-submit/code.zip \
-  --config taiji-output/example-submit/config.yaml \
+  --zip outputs/taiji-output/example-submit/code.zip \
+  --config outputs/taiji-output/example-submit/config.yaml \
   --run-sh examples/minimal-taiji-submit/run.sh \
   --name "minimal_example_with_runsh"
 ```
@@ -90,8 +90,8 @@ For one-off generic file mapping:
 ```bash
 taac2026 prepare-submit \
   --template-job-url "https://taiji.algo.qq.com/training/..." \
-  --zip taiji-output/example-submit/code.zip \
-  --config taiji-output/example-submit/config.yaml \
+  --zip outputs/taiji-output/example-submit/code.zip \
+  --config outputs/taiji-output/example-submit/config.yaml \
   --file ./main.py \
   --file ./local_dataset.py=dataset.py \
   --name "mapped_file_example"

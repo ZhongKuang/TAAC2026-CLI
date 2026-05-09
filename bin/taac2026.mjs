@@ -80,11 +80,11 @@ Commands:
 ${Object.entries(commands).map(([name, command]) => `  ${name.padEnd(15)} ${command.description}`).join("\n")}
 
 Examples:
-  taac2026 scrape --all --incremental --direct --cookie-file taiji-output/secrets/taiji-cookie.txt
+  taac2026 scrape --all --incremental --direct --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt
   taac2026 diff-config old.yaml new.yaml --json --out diff.json
   taac2026 prepare-submit --template-job-url <url> --file-dir ./taiji-files --name exp_001
-  taac2026 submit --bundle taiji-output/submit-bundle --template-job-internal-id <id>
-  taac2026 submit doctor --bundle taiji-output/submit-bundle
+  taac2026 submit --bundle outputs/taiji-output/submit/bundle --template-job-internal-id <id>
+  taac2026 submit doctor --bundle outputs/taiji-output/submit/bundle
   taac2026 compare jobs 56242 58244
   taac2026 compare-runs --base 58244 --exp 56242
   taac2026 ckpt-select --job 56242 --by valid_auc

@@ -7,7 +7,7 @@ description: Use TAAC2026 CLI to scrape Tencent TAAC / Taiji training and evalua
 
 ## Setup
 
-Run commands from the user's workspace root so outputs land under `taiji-output/`. If `taac2026` is linked, use it; otherwise run `node <TOOL_DIR>/bin/taac2026.mjs`.
+Run commands from the user's workspace root so outputs land under `outputs/taiji-output/`. If `taac2026` is linked, use it; otherwise run `node <TOOL_DIR>/bin/taac2026.mjs`.
 
 Install dependencies only when needed:
 
@@ -16,26 +16,26 @@ npm install
 npx playwright install chromium
 ```
 
-Store cookies or copied request headers under `taiji-output/secrets/`. Never print or commit cookies.
+Store cookies or copied request headers under `outputs/taiji-output/secrets/`. Never print or commit cookies.
 
 ## Decision Matrix
 
 | User intent | Prefer this command |
 | --- | --- |
-| Inspect one or a few training Jobs | `taac2026 scrape --all --job-internal-id <id> --cookie-file taiji-output/secrets/taiji-cookie.txt --direct` |
-| Refresh an existing training cache | `taac2026 scrape --all --incremental --cookie-file taiji-output/secrets/taiji-cookie.txt --direct` |
-| Archive all training history | `taac2026 scrape --all --cookie-file taiji-output/secrets/taiji-cookie.txt --direct` only when explicitly requested |
+| Inspect one or a few training Jobs | `taac2026 scrape --all --job-internal-id <id> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct` |
+| Refresh an existing training cache | `taac2026 scrape --all --incremental --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct` |
+| Archive all training history | `taac2026 scrape --all --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct` only when explicitly requested |
 | Compare two training Jobs | `taac2026 compare-runs --base <id> --exp <id> --config --metrics --json --out compare-runs.json` |
 | Compare config files | `taac2026 diff-config old.yaml new.yaml --json --out diff.json` |
 | Diagnose a failed Job | `taac2026 logs --job <id> --errors --tail 100 --json --out logs-<id>.json` or `taac2026 diagnose job --job-internal-id <id> --json --out diagnose-<id>.json` |
-| Check submit package before upload | `taac2026 submit doctor --bundle taiji-output/submit-bundle` |
-| Verify platform received the intended files | scrape the submitted Job, then `taac2026 submit verify --bundle taiji-output/submit-bundle --job-internal-id <id>` |
+| Check submit package before upload | `taac2026 submit doctor --bundle outputs/taiji-output/submit/bundle` |
+| Verify platform received the intended files | scrape the submitted Job, then `taac2026 submit verify --bundle outputs/taiji-output/submit/bundle --job-internal-id <id>` |
 | Select a checkpoint by rule | `taac2026 ckpt-select --job <id> --by valid_auc --json --out ckpt-select.json` |
 | Publish a checkpoint as model | first dry-run `taac2026 ckpt-publish --job <id> --ckpt "<name>" --json --out ckpt-publish.json` |
-| Find a model | `taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "<name>" --out model-list.json` |
-| Create an evaluation | first dry-run `taac2026 eval create --model-name "<name>" --submit-name <local-submit> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json` |
-| Analyze evaluation-page results | first `taac2026 eval list --cookie-file taiji-output/secrets/taiji-cookie.txt --page-size 20 --out eval-list.json`, then `taac2026 eval scrape --task-id <id> --logs --code --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json` |
-| Stop an evaluation | first dry-run `taac2026 eval stop --task-id <id> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-stop.json` |
+| Find a model | `taac2026 model list --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --search "<name>" --out model-list.json` |
+| Create an evaluation | first dry-run `taac2026 eval create --model-name "<name>" --submit-name <local-submit> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-create.json` |
+| Analyze evaluation-page results | first `taac2026 eval list --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --page-size 20 --out eval-list.json`, then `taac2026 eval scrape --task-id <id> --logs --code --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json` |
+| Stop an evaluation | first dry-run `taac2026 eval stop --task-id <id> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-stop.json` |
 
 `evaluation` is an alias for `eval`; use `eval` in docs and replies.
 
@@ -52,7 +52,7 @@ Default order is targeted > incremental > full.
 ## Output Discipline
 
 - For machine-readable reports, prefer `--json --out <name>.json` or plain `--out <name>.json`; avoid printing large JSON to stdout.
-- Relative `--out` report names are written under `taiji-output/reports/` or the command-specific output folder. `eval scrape --out-dir` is different: it is an explicit directory path; use `--out-dir taiji-output/evaluations-<name>` when you want a custom folder under `taiji-output/`.
+- Relative `--out` report names are written under `outputs/taiji-output/reports/<type>/` or the command-specific output folder. `eval scrape --out-dir` is different: it is an explicit directory path; use `--out-dir outputs/taiji-output/evaluation/evaluations-<name>` when you want a custom evaluation folder.
 - Reply with summaries: `syncStats`, Job IDs, Eval task IDs, key metrics, error snippets, and file paths.
 - Do not paste whole `jobs.json`, `eval-tasks.json`, full logs, or downloaded code into chat. Use `rg`, `head`, `jq`, CSV projections, or `logs --errors --tail 100`.
 
@@ -75,15 +75,15 @@ Extra-risk flags require explicit mention: `--run`, `--force`, `--allow-add-file
 Training scrape:
 
 ```bash
-taac2026 scrape --all --job-internal-id <JOB_INTERNAL_ID> --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
-taac2026 scrape --all --incremental --cookie-file taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 scrape --all --job-internal-id <JOB_INTERNAL_ID> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct
+taac2026 scrape --all --incremental --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --direct
 ```
 
 Evidence tools:
 
 ```bash
-taac2026 submit doctor --bundle taiji-output/submit-bundle
-taac2026 submit verify --bundle taiji-output/submit-bundle --job-internal-id <JOB_INTERNAL_ID>
+taac2026 submit doctor --bundle outputs/taiji-output/submit/bundle
+taac2026 submit verify --bundle outputs/taiji-output/submit/bundle --job-internal-id <JOB_INTERNAL_ID>
 taac2026 compare jobs <JOB_INTERNAL_ID...> --json --out compare-jobs.json
 taac2026 compare-runs --base <BASE_JOB_INTERNAL_ID> --exp <EXP_JOB_INTERNAL_ID> --config --metrics --json --out compare-runs.json
 taac2026 config diff-ref --config config.yaml --job-internal-id <JOB_INTERNAL_ID> --json --out config-diff-ref.json
@@ -97,26 +97,26 @@ Checkpoint/model/evaluation:
 ```bash
 taac2026 ckpt-select --job <JOB_INTERNAL_ID> --by valid_auc --json --out ckpt-select.json
 taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --json --out ckpt-publish.json
-taac2026 model list --cookie-file taiji-output/secrets/taiji-cookie.txt --search "<MODEL_NAME>" --out model-list.json
-taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-create.json
-taac2026 eval scrape --task-id <EVAL_TASK_ID> --logs --code --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json
-taac2026 eval stop --task-id <EVAL_TASK_ID> --cookie-file taiji-output/secrets/taiji-cookie.txt --out eval-stop.json
+taac2026 model list --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --search "<MODEL_NAME>" --out model-list.json
+taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-create.json
+taac2026 eval scrape --task-id <EVAL_TASK_ID> --logs --code --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-scrape.json
+taac2026 eval stop --task-id <EVAL_TASK_ID> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --out eval-stop.json
 ```
 
 Live examples only after confirmation:
 
 ```bash
-taac2026 submit --bundle taiji-output/submit-bundle --cookie-file taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_ID> --execute --yes
-taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --json --out ckpt-publish-live.json
-taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-create-live.json
+taac2026 submit --bundle outputs/taiji-output/submit/bundle --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_ID> --execute --yes
+taac2026 ckpt-publish --job <JOB_INTERNAL_ID> --ckpt "<CKPT_NAME>" --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --execute --yes --json --out ckpt-publish-live.json
+taac2026 eval create --model-name "<MODEL_NAME>" --submit-name <LOCAL_SUBMIT_NAME> --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --execute --yes --out eval-create-live.json
 ```
 
 ## Notes
 
 - `ckpt-publish` can use `--ckpt "<name>"` or `--by valid_auc`; pass `--instance-id <id>` if the selection is ambiguous across instances.
-- `eval create --submit-name` resolves `submits/<date>/<name>/inference_code`; exact matches win, fuzzy matches must be unique.
+- `eval create --submit-name` resolves `outputs/submit/<date>/<name>/inference_code`; exact matches win, fuzzy matches must be unique.
 - `--file-dir <dir>` for eval create is a manual fallback. It uploads only direct `dataset.py`, `dense_transform.py`, `eda.py`, `infer.py`, and `model.py` unless `--include-all-files` is explicitly confirmed.
-- `eval scrape` writes `taiji-output/evaluations/eval-summary.csv`, `eval-tasks.json`, `logs/<evalTaskId>.txt`, and `code/<evalTaskId>/files/...`.
+- `eval scrape` writes `outputs/taiji-output/evaluation/evaluations/eval-summary.csv`, `eval-tasks.json`, `logs/<evalTaskId>.txt`, and `code/<evalTaskId>/files/...`.
 
 ## References
 

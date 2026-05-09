@@ -35,9 +35,9 @@ If Playwright login triggers rate limiting or frequent verification, use the use
 3. Refresh the page.
 4. Select the `task?pageNum=0&pageSize=...` request.
 5. Copy either the `cookie` request header value or the whole request via `Copy as cURL`.
-6. Save it to `taiji-output/secrets/taiji-cookie.txt`.
+6. Save it to `outputs/taiji-output/secrets/taiji-cookie.txt`.
 
-Treat cookies as secrets. Add `taiji-output/` to `.gitignore`.
+Treat cookies as secrets. Add `outputs/taiji-output/` to `.gitignore`.
 
 ## Output Shape
 
@@ -73,7 +73,7 @@ taac2026 diff-config old-config.yaml new-config.yaml
 taac2026 diff-config old-config.yaml new-config.yaml --json --out diff.json
 ```
 
-The tool parses YAML and reports semantic changes by path. It handles nested maps and arrays, including paths like `optimizer.lr`, `features[2]`, and `model.layers[1].dropout`. Relative `--out` values are written under `taiji-output/`; a bare filename such as `diff.json` becomes `taiji-output/config-diffs/diff.json`.
+The tool parses YAML and reports semantic changes by path. It handles nested maps and arrays, including paths like `optimizer.lr`, `features[2]`, and `model.layers[1].dropout`. Relative `--out` values are written under `outputs/taiji-output/reports/`; a bare filename such as `diff.json` becomes `outputs/taiji-output/reports/config-diffs/diff.json`.
 
 ## Known Failure Modes
 

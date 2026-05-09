@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const COS = require("cos-nodejs-sdk-v5");
 
-const DEFAULT_OUT_ROOT = "taiji-output";
-const DEFAULT_SUBMIT_LIVE_DIR = "submit-live";
+const DEFAULT_OUT_ROOT = "outputs/taiji-output/submit";
+const DEFAULT_SUBMIT_LIVE_DIR = "live";
 const BUCKET = "hunyuan-external-1258344706";
 const REGION = "ap-guangzhou";
 const TAIJI_ORIGIN = "https://taiji.algo.qq.com";
@@ -31,7 +31,7 @@ Options:
   --run                             Start the new Job after creation.
   --yes                             Required together with --execute.
   --allow-add-file                  Allow uploaded files absent from the template trainFiles.
-  --out <dir>                       Output directory. Relative paths are placed under taiji-output/. Default: taiji-output/submit-live/<timestamp>.
+  --out <dir>                       Output directory. Relative paths are placed under outputs/taiji-output/submit/. Default: outputs/taiji-output/submit/live/<timestamp>.
   --help                            Show this help.
 
 Dry-run is the default. It never uploads files, creates jobs, or starts jobs.`;
@@ -66,14 +66,16 @@ function required(value, message) {
 
 function assertSafeRelativeOutputPath(outDir) {
   if (!path.isAbsolute(outDir) && String(outDir).split(/[\\/]+/).includes("..")) {
-    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside taiji-output.");
+    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside outputs/taiji-output.");
   }
 }
 
 export function resolveTaijiOutputDir(outDir) {
   assertSafeRelativeOutputPath(outDir);
   if (path.isAbsolute(outDir)) return outDir;
-  if (outDir.split(/[\\/]/)[0] === DEFAULT_OUT_ROOT) return path.resolve(outDir);
+  const parts = outDir.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(outDir);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
   return path.resolve(DEFAULT_OUT_ROOT, outDir);
 }
 

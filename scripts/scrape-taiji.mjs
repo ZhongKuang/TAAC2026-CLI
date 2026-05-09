@@ -12,7 +12,7 @@ const DEFAULT_URL =
   "https://taiji.algo.qq.com/training/ckpt/angel_training_ams_2026_1029735554728157691_20260505053802_1b5f3f87/56737/95cdb55f9de411b5019df4ed57762755";
 const TRAINING_URL = "https://taiji.algo.qq.com/training";
 const DEFAULT_API_AUTH_WAIT_MS = 180_000;
-const DEFAULT_OUT_ROOT = "taiji-output";
+const DEFAULT_OUT_ROOT = "outputs/taiji-output/training";
 const BUCKET = "hunyuan-external-1258344706";
 const REGION = "ap-guangzhou";
 export const DOWNLOAD_VALIDATION_VERSION = 2;
@@ -34,7 +34,7 @@ Options:
   --incremental                      Skip deep fetches for unchanged terminal Jobs with complete validated cache.
   --job-internal-id <id>             Target one Taiji internal Job id from the training list.
   --job-id <task-id>                 Target one platform task id from the training list.
-  --out <dir>                        Output directory. Relative paths are placed under taiji-output/.
+  --out <dir>                        Output directory. Relative paths are placed under outputs/taiji-output/training/.
   --page-size <n>                    Job/instance page size. Default: 100.
   --timeout <ms>                     Browser/login timeout. Default: 120000.
   --auth-timeout <ms>                API auth retry timeout. Default: max(timeout, 180000).
@@ -80,14 +80,16 @@ function parseArgs(argv) {
 
 function assertSafeRelativeOutputPath(outDir) {
   if (!path.isAbsolute(outDir) && String(outDir).split(/[\\/]+/).includes("..")) {
-    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside taiji-output.");
+    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside outputs/taiji-output.");
   }
 }
 
 export function resolveTaijiOutputDir(outDir) {
   assertSafeRelativeOutputPath(outDir);
   if (path.isAbsolute(outDir)) return outDir;
-  if (outDir.split(/[\\/]/)[0] === DEFAULT_OUT_ROOT) return path.resolve(outDir);
+  const parts = outDir.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(outDir);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
   return path.resolve(DEFAULT_OUT_ROOT, outDir);
 }
 

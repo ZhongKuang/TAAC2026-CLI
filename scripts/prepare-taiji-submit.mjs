@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_OUT_ROOT = "taiji-output";
+const DEFAULT_OUT_ROOT = "outputs/taiji-output/submit";
 const PRIMARY_TRAIN_FILE_NAMES = new Set(["code.zip", "config.yaml", "run.sh"]);
 
 function usage() {
@@ -20,7 +20,7 @@ Options:
   --file <path[=name]>   Optional generic trainFile replacement. Repeatable. Primary names are reserved for --zip/--config/--run-sh.
   --file-dir <dir>       Optional directory of trainFiles. Direct files only; code.zip/config.yaml/run.sh are auto-detected, others become generic files.
   --run                  Mark the prepared submission as run-after-submit.
-  --out <dir>            Output directory. Relative paths are placed under taiji-output/. Default: taiji-output/submit-bundle
+  --out <dir>            Output directory. Relative paths are placed under outputs/taiji-output/submit/. Default: outputs/taiji-output/submit/bundle
   --message <text>       Optional local note, often matching the git commit message.
   --allow-dirty          Do not warn when the local git working tree is dirty.
   --help                 Show this help.
@@ -33,7 +33,7 @@ browser/API automation after the platform upload flow is captured.`;
 function parseArgs(argv) {
   const args = {
     run: false,
-    out: "submit-bundle",
+    out: "bundle",
     allowDirty: false,
   };
 
@@ -185,14 +185,16 @@ async function collectFileDirSpecs(fileDirs = []) {
 
 function assertSafeRelativeOutputPath(outDir) {
   if (!path.isAbsolute(outDir) && String(outDir).split(/[\\/]+/).includes("..")) {
-    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside taiji-output.");
+    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside outputs/taiji-output.");
   }
 }
 
 export function resolveTaijiOutputDir(outDir) {
   assertSafeRelativeOutputPath(outDir);
   if (path.isAbsolute(outDir)) return outDir;
-  if (outDir.split(/[\\/]/)[0] === DEFAULT_OUT_ROOT) return path.resolve(outDir);
+  const parts = outDir.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(outDir);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
   return path.resolve(DEFAULT_OUT_ROOT, outDir);
 }
 

@@ -7,21 +7,22 @@ import yaml from "js-yaml";
 
 import { validateTrainFileDownload } from "./scrape-taiji.mjs";
 
-const DEFAULT_OUT_ROOT = "taiji-output";
+const DEFAULT_OUT_ROOT = "outputs/taiji-output/training";
+const DEFAULT_REPORT_ROOT = "outputs/taiji-output/reports";
 const TAIJI_ORIGIN = "https://taiji.algo.qq.com";
 
 function usage() {
   return `Usage:
   taac2026 submit doctor --bundle <submit-bundle-dir> [--json] [--out <file>]
-  taac2026 submit verify --bundle <submit-bundle-dir> --job-internal-id <id> [--output-dir taiji-output]
-  taac2026 compare jobs <job-internal-id...> [--output-dir taiji-output] [--json]
+  taac2026 submit verify --bundle <submit-bundle-dir> --job-internal-id <id> [--output-dir outputs/taiji-output/training]
+  taac2026 compare jobs <job-internal-id...> [--output-dir outputs/taiji-output/training] [--json]
   taac2026 compare-runs --base <id> --exp <id> [--config] [--metrics] [--json]
   taac2026 logs --job <id> --errors [--tail 100] [--json]
   taac2026 ckpt-select --job <id> --by valid_auc [--json]
   taac2026 ckpt-publish --job <id> --ckpt <ckpt-name> --cookie-file <file> [--execute --yes] [--force]
-  taac2026 config diff-ref --config <config.yaml> --job-internal-id <id> [--output-dir taiji-output]
-  taac2026 ledger sync [--output-dir taiji-output] [--out <file>]
-  taac2026 diagnose job --job-internal-id <id> [--output-dir taiji-output] [--json]`;
+  taac2026 config diff-ref --config <config.yaml> --job-internal-id <id> [--output-dir outputs/taiji-output/training]
+  taac2026 ledger sync [--output-dir outputs/taiji-output/training] [--out <file>]
+  taac2026 diagnose job --job-internal-id <id> [--output-dir outputs/taiji-output/training] [--json]`;
 }
 
 function parseArgs(argv) {
@@ -56,15 +57,29 @@ function required(value, message) {
 
 function assertSafeRelativeOutputPath(outPath) {
   if (!path.isAbsolute(outPath) && String(outPath).split(/[\\/]+/).includes("..")) {
-    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside taiji-output.");
+    throw new Error("Relative output paths must not contain '..'. Use an absolute path for custom locations outside outputs/taiji-output.");
   }
 }
 
 function resolveOutputPath(outPath, defaultSubdir) {
   assertSafeRelativeOutputPath(outPath);
   if (path.isAbsolute(outPath)) return outPath;
-  if (outPath.split(/[\\/]/)[0] === DEFAULT_OUT_ROOT) return path.resolve(outPath);
-  return path.resolve(DEFAULT_OUT_ROOT, defaultSubdir, outPath);
+  const parts = outPath.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(outPath);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
+  const scopedDir = defaultSubdir && defaultSubdir !== "reports" ? [defaultSubdir] : [];
+  return path.resolve(DEFAULT_REPORT_ROOT, ...scopedDir, outPath);
+}
+
+function resolveOutputDir(outDir) {
+  const target = outDir ?? DEFAULT_OUT_ROOT;
+  assertSafeRelativeOutputPath(target);
+  if (path.isAbsolute(target)) return target;
+  const parts = target.split(/[\\/]+/);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output" && parts.length === 2) return path.resolve(DEFAULT_OUT_ROOT);
+  if (parts[0] === "outputs" && parts[1] === "taiji-output") return path.resolve(target);
+  if (parts[0] === "taiji-output") return path.resolve(DEFAULT_OUT_ROOT, ...parts.slice(1));
+  return path.resolve(DEFAULT_OUT_ROOT, target);
 }
 
 async function readJson(filePath) {
@@ -557,7 +572,7 @@ export async function doctorBundle(options) {
 
 export async function verifyBundleAgainstJob(options) {
   const bundleReport = await doctorBundle({ bundleDir: options.bundleDir });
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const job = await resolveJob(outputDir, options);
   const findings = [...bundleReport.findings];
   const files = [];
@@ -597,7 +612,7 @@ export async function verifyBundleAgainstJob(options) {
 }
 
 export async function compareJobs(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const jobs = await loadJobRows(outputDir);
   const metrics = await loadMetricRows(outputDir);
   const wanted = new Set((options.jobInternalIds ?? []).map(String));
@@ -623,7 +638,7 @@ export async function compareJobs(options) {
 }
 
 export async function selectCheckpoint(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const job = await resolveJob(outputDir, options);
   const spec = ruleSpec(options.by);
   const rows = metricRowsForJob(await loadMetricRows(outputDir), job.jobInternalId);
@@ -646,7 +661,7 @@ export async function selectCheckpoint(options) {
 }
 
 export async function compareRuns(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const base = await resolveJob(outputDir, { jobInternalId: required(options.baseJobInternalId, "Missing baseJobInternalId") });
   const exp = await resolveJob(outputDir, { jobInternalId: required(options.expJobInternalId, "Missing expJobInternalId") });
   const metrics = await loadMetricRows(outputDir);
@@ -736,7 +751,7 @@ async function resolveCheckpointPublishTarget(outputDir, job, options) {
 }
 
 export async function publishCheckpoint(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const job = await resolveJob(outputDir, options);
   const checkpoint = await resolveCheckpointPublishTarget(outputDir, job, options);
   const body = {
@@ -788,7 +803,7 @@ async function jobConfig(outputDir, job) {
 }
 
 export async function diffConfigRef(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const job = await resolveJob(outputDir, options);
   const current = parseYamlMapping(await readFile(path.resolve(required(options.configPath, "Missing configPath"))), "config.yaml");
   const reference = await jobConfig(outputDir, job);
@@ -800,11 +815,11 @@ export async function diffConfigRef(options) {
 }
 
 export async function syncLedger(options = {}) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const compared = await compareJobs({ outputDir });
   const out = options.out
     ? resolveOutputPath(options.out, "ledger")
-    : path.join(outputDir, "ledger", "experiments.json");
+    : path.resolve(DEFAULT_REPORT_ROOT, "ledger", "experiments.json");
   const result = {
     generatedAt: new Date().toISOString(),
     outputDir,
@@ -817,7 +832,7 @@ export async function syncLedger(options = {}) {
 }
 
 export async function diagnoseJob(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const job = await resolveJob(outputDir, options);
   const errors = [];
   const lastLines = [];
@@ -837,7 +852,7 @@ export async function diagnoseJob(options) {
 }
 
 export async function logsForJob(options) {
-  const outputDir = path.resolve(options.outputDir ?? DEFAULT_OUT_ROOT);
+  const outputDir = resolveOutputDir(options.outputDir);
   const job = await resolveJob(outputDir, options);
   const tailCount = Number(options.tail ?? 100);
   const errors = [];
@@ -865,9 +880,19 @@ function formatReport(report) {
   return `${lines.join("\n")}\n`;
 }
 
+function reportSubdir(defaultName) {
+  if (defaultName.startsWith("ckpt-")) return "checkpoint";
+  if (defaultName.startsWith("compare-")) return "compare";
+  if (defaultName.startsWith("config-")) return "config-diffs";
+  if (defaultName.startsWith("diagnose-")) return "diagnose";
+  if (defaultName.startsWith("logs")) return "logs";
+  if (defaultName === "doctor.json" || defaultName === "verify.json") return "submit";
+  return "misc";
+}
+
 async function writeResult(result, args, defaultName) {
   if (args.out) {
-    const outPath = resolveOutputPath(args.out, "reports");
+    const outPath = resolveOutputPath(args.out, reportSubdir(defaultName));
     await mkdir(path.dirname(outPath), { recursive: true });
     await writeFile(outPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
     console.log(`Wrote ${outPath}`);

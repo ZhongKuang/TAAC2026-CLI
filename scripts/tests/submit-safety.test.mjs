@@ -56,14 +56,14 @@ test("submit rejects uploaded trainFiles that do not exist in the template unles
   );
 });
 
-test("relative output paths stay under taiji-output unless an absolute path is used", () => {
+test("relative output paths stay under outputs/taiji-output unless an absolute path is used", () => {
   assert.equal(
     path.relative(process.cwd(), resolvePrepareOutputDir("submit-bundle")),
-    path.join("taiji-output", "submit-bundle"),
+    path.join("outputs", "taiji-output", "submit", "submit-bundle"),
   );
   assert.equal(
     path.relative(process.cwd(), resolveTaijiOutputFile("diff.json")),
-    path.join("taiji-output", "config-diffs", "diff.json"),
+    path.join("outputs", "taiji-output", "reports", "config-diffs", "diff.json"),
   );
   assert.throws(() => resolvePrepareOutputDir("../escape"), /Relative output paths must not contain '\.\.'/);
   assert.throws(() => resolveTaijiOutputFile("../escape.json"), /Relative output paths must not contain '\.\.'/);

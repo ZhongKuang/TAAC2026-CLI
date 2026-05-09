@@ -30,7 +30,7 @@ Higher-level wrappers can combine this with Git:
 git add .
 git commit -m "try focal loss"
 taac2026 prepare-submit --template-job-url "<url>" --file-dir "./taiji-files" --name "exp_017" --description "try focal loss" --run
-taac2026 submit --bundle taiji-output/submit-bundle --cookie-file taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID> --execute --yes
+taac2026 submit --bundle outputs/taiji-output/submit/bundle --cookie-file outputs/taiji-output/secrets/taiji-cookie.txt --template-job-internal-id <TEMPLATE_JOB_INTERNAL_ID> --execute --yes
 ```
 
 Add `--run` to the submit command only when the user explicitly asks to start training.
@@ -89,7 +89,7 @@ Captured live flow:
 ## Live Submit Safety
 
 `scripts/submit-taiji.mjs` is dry-run by default. It only writes a plan under
-`taiji-output/submit-live/<timestamp>/`. Live mutation requires explicit
+`outputs/taiji-output/submit/live/<timestamp>/`. Live mutation requires explicit
 `--execute --yes`; training start additionally requires `--run`.
 
 By default, live submit only replaces uploaded files whose names already exist
@@ -99,14 +99,14 @@ intentionally adding new `trainFiles`. `--file-dir` scans direct files only and
 ignores subdirectories.
 
 Do not commit cookies, token captures, prepared bundles, or live results. Keep
-them under `taiji-output/`.
+them under `outputs/taiji-output/`.
 
 ## Safe Current Tool
 
 `scripts/prepare-taiji-submit.mjs` intentionally does not upload or click. It:
 
 - Validates the code zip, config file, optional `run.sh`, optional generic files, and optional `--file-dir`.
-- Copies prepared trainFiles into a deterministic `taiji-output/submit-bundle/files/` directory by default.
+- Copies prepared trainFiles into a deterministic `outputs/taiji-output/submit/bundle/files/` directory by default.
 - Records Job Name, Job Description, template URL, and `runAfterSubmit`.
 - Records Git root, branch, HEAD, and dirty status when available.
 - Writes `manifest.json` and `NEXT_STEPS.md`.
